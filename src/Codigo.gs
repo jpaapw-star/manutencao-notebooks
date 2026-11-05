@@ -22,7 +22,7 @@ var ABA_NOMES_ANTIGOS = ['EQUIPAMENTOS'];
 var FINALIZADO = 'FINALIZADO';
 var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
 var COLUNAS = ['DATA ENTRADA', 'TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO', 'EAN', 'SERIAL', 'NF', 'GARANTIA', 'DEFEITO',
-  'TÉCNICO', 'SITUAÇÃO', 'LOCAL', 'PEÇAS', 'VALOR PEÇAS', 'LINK PEÇA',
+  'TÉCNICO', 'SITUAÇÃO', 'LOCAL', 'PEÇAS',
   'O QUE FOI FEITO / NOTAS', 'ÚLTIMA ATUALIZAÇÃO', 'COMBINA COM'];
 // Colunas que o app preenche sozinho (acrescentadas no fim se faltarem).
 var COLUNAS_AUTO = ['COMBINA COM'];
@@ -30,13 +30,18 @@ var COLUNAS_AUTO = ['COMBINA COM'];
 var NOTAS = 'O QUE FOI FEITO / NOTAS';
 var COLUNAS_DO_APP = ['PEÇAS', NOTAS, 'COMBINA COM'];
 var OBS = 'OBSERVAÇÕES';
-var VERSAO_PLANILHA = '7';
+var VERSAO_PLANILHA = '8';
 var DATAS = ['DATA ENTRADA', 'ÚLTIMA ATUALIZAÇÃO'];
 // Produtos em garantia ficam na aba GARANTIA e os de sucata na aba SUCATA (mesmas colunas), não em APARELHOS.
 var ABA_GARANTIA = 'GARANTIA';
 var ABA_SUCATA = 'SUCATA';
 var ABAS_DADOS = [ABA, ABA_GARANTIA, ABA_SUCATA];
-var VISTAS = { 'PEÇAS': ['AGUARDANDO PEÇA', 'PEÇA PEDIDA'] };
+// Aba PEÇAS = estoque das peças compradas (o João preenche). As duas últimas colunas o app preenche.
+var ABA_PECAS = 'PEÇAS';
+var CAB_PECAS = ['DATA COMPRA', 'PEÇA', 'CÓDIGO DA PEÇA', 'SERVE NOS MODELOS', 'VALOR', 'LINK', 'SITUAÇÃO', 'USADA EM (SERIAL)',
+  'MODELOS COMPATÍVEIS (PESQUISA)', 'APARELHOS QUE PRECISAM'];
+// Colunas que saíram de APARELHOS (valor e link agora ficam na aba PEÇAS). Só saem se estiverem vazias.
+var COLUNAS_REMOVIDAS = ['VALOR PEÇAS', 'LINK PEÇA'];
 // Abas que não existem mais (o app apaga se encontrar). Os finalizados continuam em APARELHOS.
 var ABAS_REMOVIDAS = ['FINALIZADOS', 'RESUMO'];
 var HISTORICO = 'HISTÓRICO';
@@ -310,7 +315,7 @@ function combinacoes(itens) {
  * Cada peça boa de um doador só é usada uma vez; quem doa não entra como aparelho a montar.
  * Começa pelos que precisam de menos peças. Retorna [{ serial, modelo, recebe: [{peca, de, sucata}] }].
  */
-function planosDeMontagem(itens) {
+function planosDeMontagem(itens, estoque) {
   var lista = [];
   itens.forEach(function (it, i) {
     var sit = semAcento_(it['SITUAÇÃO']).trim();
@@ -319,23 +324,32 @@ function planosDeMontagem(itens) {
     lista.push({ i: i, m: m, modelo: String(it.MODELO || '').trim(), serial: String(it.SERIAL || '').trim() || ('linha ' + it._linha),
       aba: it._aba || '', linha: it._linha, pecas: pecasDaColuna(it['PEÇAS']), sucata: sit === 'SUCATA', usadas: {}, doou: false, montado: false });
   });
-  var alvos = lista.filter(function (a) { return !a.sucata && a.pecas.length; })
+  // Peça comprada em estoque também conta como doador (só da peça dela, nos modelos em que serve).
+  (estoque || []).forEach(function (e, k) {
+    if (!e.tipo || e.usada) return;
+    lista.push({ i: 'e' + k, estoque: true, modelos: e.modelos, oferece: [e.tipo], serial: 'PEÇA COMPRADA' + (e.codigo ? ' ' + e.codigo : ' (' + e.peca + ')'),
+      pecas: [], sucata: false, usadas: {}, doou: false, montado: true });
+  });
+  var alvos = lista.filter(function (a) { return !a.estoque && !a.sucata && a.pecas.length; })
     .sort(function (a, b) { return a.pecas.length - b.pecas.length; });
   var planos = [];
   alvos.forEach(function (a) {
     if (a.doou) return;
-    var doadores = lista.filter(function (b) { return b !== a && b.m === a.m && !b.montado; });
+    var doadores = lista.filter(function (b) {
+      if (b.estoque) return modelosCombinam(a.modelo, b.modelos);
+      return b !== a && b.m === a.m && !b.montado;
+    });
     var falta = a.pecas.slice(), recebe = [];
     while (falta.length) {
       var melhor = null, cobre = [];
       doadores.forEach(function (b) {
-        var c = falta.filter(function (p) { return b.pecas.indexOf(p) < 0 && !b.usadas[p]; });
+        var c = falta.filter(function (p) { return (b.oferece ? b.oferece.indexOf(p) >= 0 : b.pecas.indexOf(p) < 0) && !b.usadas[p]; });
         if (!c.length) return;
-        var nota = c.length * 10 + (b.sucata ? 5 : 0) + Math.min(b.pecas.length, 4);
+        var nota = c.length * 10 + (b.estoque ? 6 : 0) + (b.sucata ? 5 : 0) + Math.min(b.pecas.length, 4);
         if (!melhor || nota > melhor.nota) { melhor = { b: b, nota: nota }; cobre = c; }
       });
       if (!melhor) break;
-      cobre.forEach(function (p) { recebe.push({ peca: p, de: melhor.b.serial, sucata: melhor.b.sucata, d: melhor.b }); melhor.b.usadas[p] = true; });
+      cobre.forEach(function (p) { recebe.push({ peca: p, de: melhor.b.serial, sucata: melhor.b.sucata, comprada: !!melhor.b.estoque, d: melhor.b }); melhor.b.usadas[p] = true; });
       falta = falta.filter(function (p) { return cobre.indexOf(p) < 0; });
     }
     if (falta.length) { recebe.forEach(function (r) { delete r.d.usadas[r.peca]; }); return; }
@@ -344,6 +358,56 @@ function planosDeMontagem(itens) {
     planos.push({ serial: a.serial, modelo: a.modelo, aba: a.aba, linha: a.linha, recebe: recebe });
   });
   return planos;
+}
+
+// ===== Peças compradas (aba PEÇAS) =====
+
+/** Tipo da peça pelo nome (ex.: "Tela 15.6 LED slim" → TELA). Vazio se não reconhecer. */
+function tipoDaPeca(texto) {
+  var t = ' ' + semAcento_(texto).replace(/[^A-Z0-9-]+/g, ' ').trim() + ' ';
+  for (var i = 0; i < PREVER.length; i++) {
+    if (PREVER[i][1].some(function (w) { return t.indexOf(w) >= 0; })) return PREVER[i][0];
+  }
+  return '';
+}
+
+/** Códigos de modelo dentro de um texto (têm letra e número, 4+ caracteres). */
+function codigosModelo_(texto) {
+  return String(texto == null ? '' : texto).toUpperCase().split(/[^A-Z0-9-]+/).map(function (x) { return x.replace(/-/g, ''); })
+    .filter(function (x) { return x.length >= 4 && /[A-Z]/.test(x) && /\d/.test(x); });
+}
+
+/** O modelo do aparelho está na lista de modelos em que a peça serve? (E1504F serve no E1504FA) */
+function modelosCombinam(modeloAparelho, listaModelos) {
+  var a = codigosModelo_(modeloAparelho), b = codigosModelo_(listaModelos);
+  return a.some(function (x) {
+    return b.some(function (y) { var c = Math.min(x.length, y.length); return c >= 5 && (x.indexOf(y) === 0 || y.indexOf(x) === 0); });
+  });
+}
+
+/** Linhas da aba PEÇAS em objetos simples. */
+function estoqueDe(linhas) {
+  if (!linhas || linhas.length < 2) return [];
+  var cab = linhas[0].map(function (h) { return String(h).trim(); });
+  var c = function (n) { return cab.indexOf(n); };
+  return linhas.slice(1).map(function (l, k) {
+    var g = function (n) { return c(n) >= 0 ? String(l[c(n)] == null ? '' : l[c(n)]).trim() : ''; };
+    var peca = g('PEÇA');
+    return { linha: k + 2, peca: peca, codigo: g('CÓDIGO DA PEÇA'), tipo: tipoDaPeca(peca),
+      modelos: [g('SERVE NOS MODELOS'), g('MODELOS COMPATÍVEIS (PESQUISA)')].filter(String).join(', '),
+      pesquisa: g('MODELOS COMPATÍVEIS (PESQUISA)'), usada: /USAD/.test(semAcento_(g('SITUAÇÃO'))) || !!g('USADA EM (SERIAL)') };
+  }).filter(function (e) { return e.peca || e.codigo; });
+}
+
+/** Aparelhos em aberto que precisam de cada peça comprada (mesmo tipo e modelo compatível). */
+function aparelhosParaPecas(estoque, itens) {
+  return estoque.map(function (e) {
+    if (e.usada || !e.tipo || !e.modelos) return '';
+    return itens.filter(function (it) {
+      var sit = semAcento_(it['SITUAÇÃO']).trim();
+      return sit !== 'FINALIZADO' && sit !== 'SUCATA' && pecasDaColuna(it['PEÇAS']).indexOf(e.tipo) >= 0 && modelosCombinam(it.MODELO, e.modelos);
+    }).map(function (it) { return String(it.SERIAL || '').trim() + (it.MODELO ? ' (' + it.MODELO + ')' : ''); }).join('\n');
+  });
 }
 
 // ===== Planilha =====
@@ -387,6 +451,19 @@ function prepararPlanilha_() {
   COLUNAS_AUTO.forEach(function (c) {
     if (cab.indexOf(c) < 0) { aba.getRange(1, cab.length + 1).setValue(c); cab.push(c); }
   });
+  // VALOR PEÇAS e LINK PEÇA saem de APARELHOS/GARANTIA/SUCATA quando estão vazias (agora ficam na aba PEÇAS).
+  var dados = [aba, abaDados_(ss, ABA_GARANTIA), abaDados_(ss, ABA_SUCATA)];
+  COLUNAS_REMOVIDAS.forEach(function (nome) {
+    var j = cab.indexOf(nome);
+    if (j < 0) return;
+    var vazia = dados.every(function (x) {
+      var n = x.getLastRow() - 1;
+      return n < 1 || x.getRange(2, j + 1, n, 1).getValues().every(function (l) { return String(l[0]).trim() === ''; });
+    });
+    if (!vazia) return;
+    dados.forEach(function (x) { if (cabecalho_(x)[j] === nome) x.deleteColumn(j + 1); });
+    cab = cabecalho_(aba);
+  });
   // Lista de situações com FINALIZADO.
   var listas = ss.getSheetByName('LISTAS');
   if (listas) {
@@ -406,13 +483,15 @@ function prepararPlanilha_() {
     x.getRange(1, 1, 1, cab.length).setValues([cab]);
     return x;
   });
-  // Abas de consulta (PEÇAS): o app escreve os valores, sem fórmula (fórmula dava erro no idioma da planilha).
-  Object.keys(VISTAS).forEach(function (nome) {
-    var v = ss.getSheetByName(nome) || ss.insertSheet(nome);
-    v.clear();
-    v.getRange(1, 1, 1, cab.length).setValues([cab]);
-    v.setFrozenRows(1);
-  });
+  // Aba PEÇAS vira o estoque de peças compradas (se ainda for a lista antiga de aparelhos, recomeça).
+  var pc = ss.getSheetByName(ABA_PECAS) || ss.insertSheet(ABA_PECAS);
+  if (cabecalho_(pc).join('|') !== CAB_PECAS.join('|')) {
+    var antigo = cabecalho_(pc);
+    if (antigo.indexOf('PEÇA') < 0) pc.clear();
+    pc.getRange(1, 1, 1, CAB_PECAS.length).setValues([CAB_PECAS]).setFontWeight('bold');
+    pc.setFrozenRows(1);
+    pc.setColumnWidth(2, 220); pc.setColumnWidth(4, 220); pc.setColumnWidth(9, 260); pc.setColumnWidth(10, 260);
+  }
   if (!ss.getSheetByName(HISTORICO)) {
     var h = ss.insertSheet(HISTORICO);
     h.getRange(1, 1, 1, 6).setValues([['DATA', 'TÉCNICO', 'SERIAL', 'O QUE MUDOU', 'ANTES', 'DEPOIS']]);
@@ -451,24 +530,29 @@ function linhasCompativeis(planos, itens) {
       'Recebe ' + p.recebe.map(function (r) { return r.peca; }).join(', ') + ' de ' + ordem.length + (ordem.length === 1 ? ' doador' : ' doadores')] });
     ordem.forEach(function (s) {
       var b = porSerial[s] || {};
-      out.push({ grupo: g, valores: [g + 1, String(b['SITUAÇÃO'] || '').toUpperCase() === 'SUCATA' ? 'DOADOR (SUCATA)' : 'DOADOR', s, b.MODELO || p.modelo,
-        b._aba || '', b['SITUAÇÃO'] || '', String(b['PEÇAS'] || ''), 'Dá ' + de[s].join(', ') + ' para ' + p.serial] });
+      var comprada = /^PEÇA COMPRADA/.test(s);
+      out.push({ grupo: g, valores: [g + 1, comprada ? 'PEÇA COMPRADA' : String(b['SITUAÇÃO'] || '').toUpperCase() === 'SUCATA' ? 'DOADOR (SUCATA)' : 'DOADOR', s, b.MODELO || (comprada ? '' : p.modelo),
+        b._aba || (comprada ? 'PEÇAS' : ''), b['SITUAÇÃO'] || (comprada ? 'EM ESTOQUE' : ''), String(b['PEÇAS'] || ''), 'Dá ' + de[s].join(', ') + ' para ' + p.serial] });
     });
   });
   return out;
 }
 
-/** Abas de consulta (ex.: PEÇAS): cópia das linhas com a situação da aba, de todas as abas de dados. */
-function escreverVistas_(ss, d) {
-  Object.keys(VISTAS).forEach(function (nome) {
-    var v = ss.getSheetByName(nome);
-    if (!v) return;
-    var linhas = d.itens.filter(function (it) { return VISTAS[nome].indexOf(String(it['SITUAÇÃO'] || '').trim().toUpperCase()) >= 0; })
-      .map(function (it) { return d.cab.map(function (h) { return it[h] == null ? '' : it[h]; }); });
-    var n = Math.max(v.getLastRow() - 1, 0);
-    if (n) v.getRange(2, 1, n, Math.max(v.getLastColumn(), d.cab.length)).clearContent();
-    v.getRange(1, 1, 1, d.cab.length).setValues([d.cab]);
-    if (linhas.length) v.getRange(2, 1, linhas.length, d.cab.length).setValues(linhas);
+function lerEstoque_(ss) {
+  var pc = ss.getSheetByName(ABA_PECAS);
+  if (!pc || pc.getLastRow() < 2) return [];
+  return estoqueDe(pc.getRange(1, 1, pc.getLastRow(), CAB_PECAS.length).getValues());
+}
+
+/** Preenche APARELHOS QUE PRECISAM na aba PEÇAS (só grava o que mudou). */
+function escreverPecas_(ss, d, est) {
+  var pc = ss.getSheetByName(ABA_PECAS);
+  if (!pc || !est.length) return;
+  var col = CAB_PECAS.indexOf('APARELHOS QUE PRECISAM') + 1;
+  var precisam = aparelhosParaPecas(est, d.itens);
+  est.forEach(function (e, k) {
+    var r = pc.getRange(e.linha, col);
+    if (String(r.getValue()) !== precisam[k]) r.setValue(precisam[k]);
   });
 }
 
@@ -483,24 +567,9 @@ function coresDosGrupos(planos) {
   return cor;
 }
 
-/** Pinta as linhas de APARELHOS, GARANTIA e SUCATA: compatíveis com a cor do grupo, o resto sem cor. */
-function pintarGrupos_(ss, d) {
-  var cor = coresDosGrupos(planosDeMontagem(d.itens));
-  abasDados_(ss).forEach(function (a) {
-    var n = a.getLastRow() - 1;
-    if (n < 1) return;
-    var vals = a.getRange(2, 1, n, d.cab.length).getValues();
-    var cS = d.cab.indexOf('SERIAL');
-    a.getRange(2, 1, n, d.cab.length).setBackgrounds(vals.map(function (l) {
-      var c = cor[normalizarSerial(l[cS])] || null;
-      return d.cab.map(function () { return c; });
-    }));
-  });
-}
-
 /** Reescreve a aba COMPATÍVEIS (só quando mudou): cada grupo com uma cor. */
-function escreverCompativeis_(ss, itens) {
-  var linhas = linhasCompativeis(planosDeMontagem(itens), itens);
+function escreverCompativeis_(ss, itens, est) {
+  var linhas = linhasCompativeis(planosDeMontagem(itens, est), itens);
   var assinatura = JSON.stringify(linhas);
   var cache = CacheService.getScriptCache();
   var aba = ss.getSheetByName(COMPATIVEIS);
@@ -583,8 +652,65 @@ function adicionarObs_(ss, it, lista, mapa) {
 }
 
 function garantirGatilho_() {
-  var tem = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'sincronizarQualidade'; });
-  if (!tem) ScriptApp.newTrigger('sincronizarQualidade').timeBased().everyHours(SINCRONIZAR_HORAS).create();
+  var nomes = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
+  if (nomes.indexOf('sincronizarQualidade') < 0) ScriptApp.newTrigger('sincronizarQualidade').timeBased().everyHours(SINCRONIZAR_HORAS).create();
+  // Quando o João mexe na aba PEÇAS, o app pesquisa os modelos compatíveis e acha os aparelhos que precisam.
+  if (nomes.indexOf('aoEditar') < 0) ScriptApp.newTrigger('aoEditar').forSpreadsheet(PLANILHAS.MANUTENCAO).onEdit().create();
+}
+
+/** Gatilho de edição da planilha (roda com a conta do dono). */
+function aoEditar(e) {
+  var nome = e && e.range ? e.range.getSheet().getName() : '';
+  if (nome !== ABA_PECAS) return;
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return;
+  try {
+    var ss = planilha_();
+    pesquisarPecas_(ss, 3);
+    recalcular_(ss);
+  } finally { lock.releaseLock(); }
+}
+
+/**
+ * Pesquisa na internet (IA do SCAN com busca do Google) os modelos de notebook em que cada peça comprada serve.
+ * Só para peças com código e sem pesquisa ainda; no máximo `limite` por vez (gasta pouco).
+ */
+function pesquisarPecas_(ss, limite) {
+  var k = iaChave_();
+  var pc = ss.getSheetByName(ABA_PECAS);
+  if (!k || !pc) return 0;
+  var col = CAB_PECAS.indexOf('MODELOS COMPATÍVEIS (PESQUISA)') + 1;
+  var feitas = 0;
+  lerEstoque_(ss).forEach(function (e) {
+    if (feitas >= limite || e.pesquisa || !e.codigo || e.usada) return;
+    var r = pesquisarModelos_(k, e.peca, e.codigo);
+    if (r === null) return;
+    pc.getRange(e.linha, col).setValue(r || 'NÃO ACHEI');
+    feitas++;
+  });
+  return feitas;
+}
+
+function pesquisarModelos_(k, peca, codigo) {
+  var pergunta = 'Peça de notebook: "' + peca + '", código/part number "' + codigo + '". Pesquise e liste os códigos de modelo de notebook ' +
+    'em que essa peça serve (ex.: E1504FA, X1504ZA, 15IRH8). Responda só com os códigos separados por vírgula, sem texto extra. ' +
+    'Se não achar nada confiável, responda NADA.';
+  for (var i = 0; i < IA_MODELOS.length; i++) {
+    var r;
+    try {
+      r = UrlFetchApp.fetch(IA_URL + IA_MODELOS[i] + ':generateContent?key=' + encodeURIComponent(k), {
+        method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+        payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: pergunta }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0 } })
+      });
+    } catch (x) { continue; }
+    if (r.getResponseCode() !== 200) continue;
+    try {
+      var t = JSON.parse(r.getContentText()).candidates[0].content.parts.map(function (p) { return p.text || ''; }).join(' ').trim();
+      if (/^NADA\b/i.test(t)) return '';
+      return codigosModelo_(t).filter(function (x, n, a) { return a.indexOf(x) === n; }).slice(0, 30).join(', ');
+    } catch (x) { continue; }
+  }
+  return null;
 }
 
 function lerItens_(aba) {
@@ -701,9 +827,9 @@ function recalcular_(ss) {
       if ((notas[it._aba][it._linha - 2] || [''])[0] !== n) aba.getRange(it._linha, cN + 1).setNote(n);
     }
   });
-  escreverCompativeis_(ss, d.itens);
-  pintarGrupos_(ss, d);
-  escreverVistas_(ss, d);
+  var est = lerEstoque_(ss);
+  escreverCompativeis_(ss, d.itens, est);
+  escreverPecas_(ss, d, est);
   if (cC < 0) return;
   var comb = combinacoes(d.itens);
   d.itens.forEach(function (it, i) {
@@ -734,7 +860,12 @@ function apiInicio() {
   });
   var mapa = lerObs_(ss);
   itens.forEach(function (it) { it._obs = obsParaTela_(obsDoItem_(mapa, it)); });
-  var montagens = planosDeMontagem(d.itens);
+  var est = lerEstoque_(ss);
+  var montagens = planosDeMontagem(d.itens, est);
+  itens.forEach(function (it) {
+    it._compradas = est.filter(function (e) { return !e.usada && e.tipo && pecasDaColuna(it['PEÇAS']).indexOf(e.tipo) >= 0 && modelosCombinam(it.MODELO, e.modelos); })
+      .map(function (e) { return e.peca + (e.codigo ? ' · ' + e.codigo : ''); });
+  });
   montagens.forEach(function (m, g) { m.cor = CORES_GRUPOS[g % CORES_GRUPOS.length]; });
   return { listas: listas_(ss), itens: itens, colunas: d.cab, planilha: ss.getUrl(), ia: !!iaChave_(), montagens: montagens };
 }
@@ -992,6 +1123,7 @@ function aplicarNota_(n) {
 /** Gatilho a cada SINCRONIZAR_HORAS: o que já passou no controle de qualidade vira FINALIZADO. */
 function sincronizarQualidade() {
   prepararPlanilha_();
+  try { pesquisarPecas_(planilha_(), 5); } catch (x) { console.log('pesquisa de peças: ' + x); }
   var q = SpreadsheetApp.openById(PLANILHAS.QUALIDADE).getSheetByName(QUALIDADE_ABA);
   if (!q) throw new Error('Aba ' + QUALIDADE_ABA + ' não encontrada no controle de qualidade.');
   var fin = seriaisFinalizados(q.getDataRange().getValues(), FINALIZA_SO_APROVADO);
@@ -1027,5 +1159,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }

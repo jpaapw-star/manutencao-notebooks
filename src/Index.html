@@ -99,8 +99,7 @@ var S = { listas:{}, itens:[], filtro:'ABERTOS', tecnico:'', atual:null };
 var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
 var CAMPOS = [
   ['SERIAL','text'], ['TIPO','lista'], ['MARCA','lista+'], ['MODELO','text'], ['NF','text'], ['DESCRIÇÃO','text'], ['EAN','text'],
-  ['GARANTIA','lista'], ['DEFEITO','defeito'], ['TÉCNICO','lista+'], ['LOCAL','lista'], ['VALOR PEÇAS','text'],
-  ['LINK PEÇA','text']
+  ['GARANTIA','lista'], ['DEFEITO','defeito'], ['TÉCNICO','lista+'], ['LOCAL','lista']
 ];
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -203,13 +202,14 @@ function abrir(item){
   $('tituloItem').textContent = item ? (it.SERIAL || 'Aparelho') : 'Novo aparelho';
   var h = '';
   if (item && it['PEÇAS']) h += '<label>PEÇAS COM DEFEITO (PREVISÃO)</label><div class="notas combina">' + esc(String(it['PEÇAS']).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">Sai do defeito e das observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
+  if (item && (it._compradas || []).length) h += '<label>PEÇA COMPRADA QUE SERVE</label><div class="notas combina">' + esc(it._compradas.join('\n')) + '</div>';
   if (item && it['COMBINA COM']) h += '<label>COMBINA COM (MESMO MODELO)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
   h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p>';
   h += '<label>SITUAÇÃO</label><div class="sits" id="sits">' + situacoes().map(function(s){ return '<button class="chip' + (s===S.sit?' on':'') + '" data-s="' + esc(s) + '">' + esc(s.charAt(0) + s.slice(1).toLowerCase()) + '</button>'; }).join('') + '</div>';
   h += '<div class="grade">';
   CAMPOS.forEach(function(c, k){
     var html = campo(c[0], c[1], it[c[0]]);
-    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO' || c[0]==='DEFEITO' || c[0]==='LINK PEÇA') ? '</div>' + html + '<div class="grade">' : '<div>' + html + '</div>';
+    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO' || c[0]==='DEFEITO') ? '</div>' + html + '<div class="grade">' : '<div>' + html + '</div>';
   });
   h += '</div>';
   var obs = (it._obs || []).slice().reverse();

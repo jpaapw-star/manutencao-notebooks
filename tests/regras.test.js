@@ -172,3 +172,28 @@ test('previsão: "regravei..., não resolveu" descarta; coluna sem defeito não 
   const c = coresDosGrupos([{ serial: 'A', recebe: [{ de: 'B' }, { de: 'C' }] }, { serial: 'D', recebe: [{ de: 'E' }] }]);
   assert.strictEqual(c.A, c.B); assert.strictEqual(c.A, c.C); assert.notStrictEqual(c.A, c.D); assert.strictEqual(c.D, c.E);
 });
+
+test('peças compradas: tipo, modelos compatíveis e aparelhos que precisam', () => {
+  const { tipoDaPeca, modelosCombinam, estoqueDe, aparelhosParaPecas } = m.exports;
+  assert.strictEqual(tipoDaPeca('Tela 15.6 LED slim 30 pinos'), 'TELA');
+  assert.strictEqual(tipoDaPeca('Teclado ABNT2'), 'TECLADO');
+  assert.ok(modelosCombinam('VIVOBOOK GO 15 E1504FA', 'E1504F, X1504ZA'));
+  assert.ok(!modelosCombinam('VIVOBOOK GO 15 E1504FA', 'X515JA'));
+  const est = estoqueDe([
+    ['DATA COMPRA', 'PEÇA', 'CÓDIGO DA PEÇA', 'SERVE NOS MODELOS', 'VALOR', 'LINK', 'SITUAÇÃO', 'USADA EM (SERIAL)', 'MODELOS COMPATÍVEIS (PESQUISA)', 'APARELHOS QUE PRECISAM'],
+    ['05/11/2026', 'Tela 15.6', 'NV156FHM', '', 300, '', 'EM ESTOQUE', '', 'E1504FA, X1504ZA', ''],
+    ['05/11/2026', 'Teclado', 'K1', 'E1504F', 80, '', 'USADA', 'ABC', '', '']
+  ]);
+  assert.strictEqual(est.length, 2);
+  assert.ok(est[1].usada);
+  const itens = [
+    { SERIAL: 'A1', MODELO: 'E1504FA', 'PEÇAS': 'TELA (PROVÁVEL)', 'SITUAÇÃO': 'EM REPARO' },
+    { SERIAL: 'A2', MODELO: 'E1504FA', 'PEÇAS': 'TECLADO', 'SITUAÇÃO': 'EM REPARO' }
+  ];
+  assert.deepStrictEqual(aparelhosParaPecas(est, itens), ['A1 (E1504FA)', '']);
+  const p = planosDeMontagem(itens, est);
+  assert.strictEqual(p.length, 1);
+  assert.strictEqual(p[0].serial, 'A1');
+  assert.strictEqual(p[0].recebe[0].de, 'PEÇA COMPRADA NV156FHM');
+  assert.ok(p[0].recebe[0].comprada);
+});
