@@ -41,6 +41,8 @@
   .grade { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
   .sits { display:flex; flex-wrap:wrap; gap:8px; }
   .notas.combina { color:var(--texto); border:1px solid var(--fraco); }
+  .obs { background:var(--cartao); border-radius:12px; padding:10px 14px; margin-bottom:8px; white-space:pre-wrap; font-size:14px; }
+  .obs .quem { color:var(--fraco); font-size:12px; font-weight:600; margin-bottom:4px; }
   .notas { white-space:pre-wrap; color:var(--fraco); font-size:14px; background:var(--cartao); border-radius:12px; padding:12px 14px; }
   .aviso { position:fixed; left:16px; right:16px; bottom:calc(84px + env(safe-area-inset-bottom)); max-width:520px; margin:0 auto; background:var(--botao); color:var(--botaoTexto); border-radius:12px; padding:12px 16px; display:none; z-index:9; text-align:center; }
   .aviso.on { display:block; }
@@ -85,7 +87,7 @@ var S = { listas:{}, itens:[], filtro:'ABERTOS', tecnico:'', atual:null };
 var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
 var CAMPOS = [
   ['SERIAL','text'], ['TIPO','lista'], ['MARCA','lista+'], ['MODELO','text'], ['NF','text'], ['DESCRIÇÃO','text'], ['EAN','text'],
-  ['GARANTIA','lista'], ['DEFEITO','defeito'], ['PEÇAS COM DEFEITO','text'], ['TÉCNICO','lista+'], ['LOCAL','lista'], ['PEÇAS','text'], ['VALOR PEÇAS','text'],
+  ['GARANTIA','lista'], ['DEFEITO','defeito'], ['TÉCNICO','lista+'], ['LOCAL','lista'], ['VALOR PEÇAS','text'],
   ['LINK PEÇA','text']
 ];
 function $(id){ return document.getElementById(id); }
@@ -131,11 +133,11 @@ function desenhar(){
     return s === S.filtro;
   })).filter(function(i){
     if (!q) return true;
-    return (qn.length >= 3 && norm(i.SERIAL).indexOf(qn) >= 0) || sem([i.MODELO, i['DESCRIÇÃO'], i.DEFEITO, i.MARCA, i['TÉCNICO']].join(' ')).indexOf(q) >= 0;
+    return (qn.length >= 3 && norm(i.SERIAL).indexOf(qn) >= 0) || sem([i.MODELO, i['DESCRIÇÃO'], i.DEFEITO, i['PEÇAS'], i.MARCA, i['TÉCNICO']].join(' ')).indexOf(q) >= 0;
   }).slice().reverse();
   $('lista').innerHTML = lista.length ? lista.map(function(i){
     var t = [i.MARCA, i.MODELO].filter(Boolean).join(' ') || i['DESCRIÇÃO'] || i.TIPO || 'Aparelho';
-    var l2 = [i['SITUAÇÃO'], i['PEÇAS COM DEFEITO'] || i.DEFEITO, i['TÉCNICO']].filter(Boolean).join(' · ');
+    var l2 = [i['SITUAÇÃO'], String(i['PEÇAS'] || '').split('|')[0].trim() || i.DEFEITO, i['TÉCNICO']].filter(Boolean).join(' · ');
     if (i['COMBINA COM']) l2 += ' · ⇄ combina com ' + String(i['COMBINA COM']).split('\n').length;
     return '<button class="item" data-l="' + i._linha + '"><b>' + esc(t) + '</b> <span style="color:var(--fraco)">' + esc(i.SERIAL||'') + '</span><div class="l2">' + esc(l2) + '</div></button>';
   }).join('') : '<div class="vazio">' + (q ? 'Nada encontrado. Toque em "Novo aparelho" para cadastrar.' : 'Nenhum aparelho aqui.') + '</div>';
@@ -170,17 +172,22 @@ function abrir(item){
   S.sit = it['SITUAÇÃO'] || '';
   $('tituloItem').textContent = item ? (it.SERIAL || 'Aparelho') : 'Novo aparelho';
   var h = '';
+  if (item && it['PEÇAS']) h += '<label>PEÇAS COM DEFEITO (PREVISÃO)</label><div class="notas combina">' + esc(String(it['PEÇAS']).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">Sai do defeito e das observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
   if (item && it['COMBINA COM']) h += '<label>COMBINA COM (MESMO MODELO)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
   h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p>';
   h += '<label>SITUAÇÃO</label><div class="sits" id="sits">' + situacoes().map(function(s){ return '<button class="chip' + (s===S.sit?' on':'') + '" data-s="' + esc(s) + '">' + esc(s.charAt(0) + s.slice(1).toLowerCase()) + '</button>'; }).join('') + '</div>';
   h += '<div class="grade">';
   CAMPOS.forEach(function(c, k){
     var html = campo(c[0], c[1], it[c[0]]);
-    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO' || c[0]==='DEFEITO' || c[0]==='PEÇAS COM DEFEITO' || c[0]==='LINK PEÇA') ? '</div>' + html + '<div class="grade">' : '<div>' + html + '</div>';
+    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO' || c[0]==='DEFEITO' || c[0]==='LINK PEÇA') ? '</div>' + html + '<div class="grade">' : '<div>' + html + '</div>';
   });
   h += '</div>';
-  if (item && it['O QUE FOI FEITO / NOTAS']) h += '<label>O QUE JÁ FOI FEITO</label><div class="notas">' + esc(it['O QUE FOI FEITO / NOTAS']) + '</div>';
-  h += '<label>' + (item ? 'ACRESCENTAR AO QUE FOI FEITO' : 'O QUE FOI FEITO / NOTAS') + '</label><textarea id="f_nota" placeholder="Ex.: troquei a tela, testei 30 min, ok"></textarea>';
+  var obs = (it._obs || []).slice().reverse();
+  if (obs.length) h += '<label>O QUE JÁ FOI FEITO (' + obs.length + ')</label>' + obs.map(function(o){
+    return '<div class="obs"><div class="quem">' + esc(o.data) + ' · ' + esc(o.tecnico || '—') + '</div>' + esc(o.texto) + '</div>';
+  }).join('');
+  h += '<label>NOVA OBSERVAÇÃO</label><textarea id="f_nota" placeholder="O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok"></textarea>';
+  h += '<div class="rodape" style="text-align:left">Fica com seu nome e a data de hoje. As observações antigas nunca são apagadas.</div>';
   if (item) h += '<div class="rodape">Entrada ' + esc(it['DATA ENTRADA']||'—') + ' · atualizado ' + esc(it['ÚLTIMA ATUALIZAÇÃO']||'—') + '</div>';
   $('form').innerHTML = h;
   $('fotoEtiqueta').onclick = function(){ escolherFoto(preencherDaEtiqueta); };
@@ -212,12 +219,8 @@ function salvar(){
   });
   item['SITUAÇÃO'] = S.sit;
   var nota = $('f_nota').value.trim();
-  if (nota){
-    var hoje = new Date().toLocaleDateString('pt-BR');
-    var linha = hoje + (S.tecnico ? ' (' + S.tecnico + ')' : '') + ': ' + nota;
-    var antes = S.atual ? String(S.atual['O QUE FOI FEITO / NOTAS'] || '') : '';
-    item['O QUE FOI FEITO / NOTAS'] = antes ? antes + '\n' + linha : linha;
-  }
+  if (nota) item._nota = nota;
+  if (nota && !S.tecnico){ aviso('Escolha seu nome antes, para a observação ficar com ele.'); pedirNome(); return; }
   if (!S.atual && !item.SERIAL && !item.MODELO) { aviso('Preencha pelo menos o serial ou o modelo.'); return; }
   $('salvar').disabled = true;
   chamar('apiSalvar', [item, S.tecnico], function(r){

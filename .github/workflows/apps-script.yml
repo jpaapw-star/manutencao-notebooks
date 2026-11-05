@@ -47,6 +47,7 @@ jobs:
         run: |
           if [ ! -f .clasp.json ]; then
             clasp create --type standalone --title "Manutenção de notebooks" --rootDir src
+            [ -f .clasp.json ] || mv src/.clasp.json .clasp.json
             node -e 'const f=".clasp.json";const c=JSON.parse(require("fs").readFileSync(f));require("fs").writeFileSync(f,JSON.stringify({scriptId:c.scriptId,rootDir:"src"},null,2)+"\n")'
             git checkout -- src/appsscript.json 2>/dev/null || true
             git config user.name "github-actions[bot]"
