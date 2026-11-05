@@ -4,6 +4,7 @@
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--SITE-->
 <style>
   :root { --fundo:#fff; --cartao:#f2f2f2; --linha:#e3e3e3; --texto:#000; --fraco:#6e6e6e; --botao:#000; --botaoTexto:#fff; }
   @media (prefers-color-scheme: dark) {
@@ -42,6 +43,7 @@
   .topo { display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--fundo); padding:12px 16px; border-bottom:1px solid var(--linha); z-index:2; }
   .topo button { background:none; border:0; color:var(--texto); font:inherit; font-size:17px; padding:4px; }
   .topo .ok { font-weight:700; }
+  #form.reparo .nr { display:none !important; }
   .grade { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
   .sits { display:flex; flex-wrap:wrap; gap:8px; }
   .notas.combina { color:var(--texto); border:1px solid var(--fraco); }
@@ -95,7 +97,7 @@
 <div class="aviso" id="aviso"></div>
 
 <script>
-var S = { listas:{}, itens:[], filtro:'ABERTOS', tecnico:'', atual:null };
+var S = { listas:{}, itens:[], filtro:'ABA:APARELHOS', tecnico:'', atual:null };
 var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
 var CAMPOS = [
   ['SERIAL','text'], ['TIPO','lista'], ['MARCA','lista+'], ['MODELO','text'], ['NF','text'], ['DESCRIÇÃO','text'], ['EAN','text'],
@@ -109,8 +111,18 @@ function aviso(t){ var a=$('aviso'); a.textContent=t; a.classList.add('on'); cle
 function norm(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/O/g,'0'); }
 function sem(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase(); }
 function chamar(fn, args, ok, erro){
-  var r = google.script.run.withSuccessHandler(ok).withFailureHandler(function(e){ (erro||function(){})(e); aviso('Erro: ' + (e && e.message || e)); });
-  r[fn].apply(r, args || []);
+  var falhou = function(e){ (erro||function(){})(e); aviso('Erro: ' + (e && e.message || e)); };
+  if (window.google && google.script && google.script.run) {
+    var r = google.script.run.withSuccessHandler(ok).withFailureHandler(falhou);
+    r[fn].apply(r, args || []);
+    return;
+  }
+  // Site próprio (GitHub Pages): fala com o app sem cookies, então a conta Google do celular não atrapalha.
+  fetch(window.API_URL, { method: 'POST', credentials: 'omit', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ api: fn, args: args || [] }) })
+    .then(function(x){ return x.json(); })
+    .then(function(d){ if (d && d.ok) ok(d.r); else falhou(new Error(d && d.erro || 'sem resposta')); })
+    .catch(falhou);
 }
 
 function carregar(depois){
@@ -124,22 +136,37 @@ function carregar(depois){
   });
 }
 
-function situacoes(){ return (S.listas['SITUAÇÃO'] || []).concat(ENCERRADAS.filter(function(s){ return (S.listas['SITUAÇÃO']||[]).indexOf(s) < 0; })); }
+// FINALIZADO não é escolhido no app: só vem do controle de qualidade. Arrumado = REPARADO.
+function situacoes(){ return (S.listas['SITUAÇÃO'] || []).concat(ENCERRADAS.filter(function(s){ return (S.listas['SITUAÇÃO']||[]).indexOf(s) < 0; })).filter(function(s){ return s !== 'FINALIZADO'; }); }
+// Com REPARADO, a tela mostra só o que vai para a planilha de produção (MANUTENÇÕES) e o que foi feito.
+var CAMPOS_REPARO = ['TÉCNICO', 'MARCA', 'MODELO', 'SERIAL'];
+function aplicarModo(){
+  var rep = S.sit === 'REPARADO';
+  $('form').classList.toggle('reparo', rep);
+  $('lNota').textContent = rep ? 'O QUE FOI FEITO (VAI PARA A PLANILHA DE PRODUÇÃO)' : 'NOVA OBSERVAÇÃO';
+  $('f_nota').placeholder = rep ? 'Ex.: TROCA DE TELA E REPARO NA INTERFACE DE ÁUDIO' : 'O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok';
+  if (rep && !$('f_nota').value.trim() && S.atual && S.atual._sugestao) $('f_nota').value = S.atual._sugestao;
+  if (rep && !valorCampo('TÉCNICO') && S.tecnico) porCampo('TÉCNICO', S.tecnico);
+}
 
 function desenhar(){
   var abertos = S.itens.filter(function(i){ return ENCERRADAS.indexOf(String(i['SITUAÇÃO']).toUpperCase()) < 0; });
   var cont = {}; S.itens.forEach(function(i){ var s = String(i['SITUAÇÃO']||'').toUpperCase(); cont[s] = (cont[s]||0) + 1; });
-  var chips = [['ABERTOS', 'Em aberto · ' + abertos.length]];
+  // Primeiro as três abas da planilha: Aparelhos, Garantia e Sucata (sem os finalizados).
+  var naAba = function(i, a){ return (i._aba || 'APARELHOS') === a && String(i['SITUAÇÃO']||'').toUpperCase() !== 'FINALIZADO'; };
+  var chips = [['APARELHOS', 'Aparelhos'], ['GARANTIA', 'Garantia'], ['SUCATA', 'Sucata']].map(function(a){
+    return ['ABA:' + a[0], a[1] + ' · ' + S.itens.filter(function(i){ return naAba(i, a[0]); }).length];
+  });
   var comb = abertos.filter(function(i){ return i['COMBINA COM']; }).length;
   if (comb) chips.push(['COMBINA', '⇄ Combinam · ' + comb]);
   if (S.tecnico) chips.push(['MEUS', 'Comigo · ' + abertos.filter(function(i){ return sem(i['TÉCNICO']) === sem(S.tecnico); }).length]);
-  situacoes().forEach(function(s){ if (cont[s]) chips.push([s, s.charAt(0) + s.slice(1).toLowerCase() + ' · ' + cont[s]]); });
+  situacoes().forEach(function(s){ if (cont[s] && s !== 'SUCATA') chips.push([s, s.charAt(0) + s.slice(1).toLowerCase() + ' · ' + cont[s]]); });
   $('chips').innerHTML = chips.map(function(c){ return '<button class="chip' + (S.filtro===c[0]?' on':'') + '" data-f="' + esc(c[0]) + '">' + esc(c[1]) + '</button>'; }).join('');
   Array.prototype.forEach.call($('chips').children, function(b){ b.onclick = function(){ S.filtro = b.getAttribute('data-f'); desenhar(); }; });
   var q = sem($('busca').value).trim(), qn = norm($('busca').value);
   var lista = (q ? S.itens : S.itens.filter(function(i){
     var s = String(i['SITUAÇÃO']||'').toUpperCase();
-    if (S.filtro === 'ABERTOS') return ENCERRADAS.indexOf(s) < 0;
+    if (S.filtro.indexOf('ABA:') === 0) return naAba(i, S.filtro.slice(4));
     if (S.filtro === 'COMBINA') return ENCERRADAS.indexOf(s) < 0 && i['COMBINA COM'];
     if (S.filtro === 'MEUS') return ENCERRADAS.indexOf(s) < 0 && sem(i['TÉCNICO']) === sem(S.tecnico);
     return s === S.filtro;
@@ -163,8 +190,8 @@ function acharItem(chave){ return S.itens.filter(function(i){ return (i._aba + '
 function mostrarMontagens(){
   $('montagens').innerHTML = S.montagens.map(function(m){
     var de = {};
-    m.recebe.forEach(function(r){ (de[r.de] = de[r.de] || { sucata: r.sucata, pecas: [] }).pecas.push(r.peca); });
-    var l2 = Object.keys(de).map(function(s){ return de[s].pecas.join(', ') + ' ← ' + s + (de[s].sucata ? ' (sucata)' : ''); }).join('\n');
+    m.recebe.forEach(function(r){ (de[r.de] = de[r.de] || { sucata: r.sucata, outro: r.outroModelo, pecas: [] }).pecas.push(r.peca); });
+    var l2 = Object.keys(de).map(function(s){ return de[s].pecas.join(', ') + ' ← ' + s + (de[s].sucata ? ' (sucata)' : '') + (de[s].outro ? ' · ' + de[s].outro : ''); }).join('\n');
     var n = Object.keys(de).length;
     return '<div class="monta" style="border-left:6px solid ' + esc(m.cor || 'transparent') + ';padding-left:12px"><button data-l="' + esc(m.aba + ':' + m.linha) + '">' + esc(m.modelo) + ' · ' + esc(m.serial) + '</button>' +
       '<div class="l2">' + esc(n === 1 ? '1 doador' : n + ' doadores') + '\n' + esc(l2) + '</div></div>';
@@ -201,22 +228,23 @@ function abrir(item){
   S.sit = it['SITUAÇÃO'] || '';
   $('tituloItem').textContent = item ? (it.SERIAL || 'Aparelho') : 'Novo aparelho';
   var h = '';
+  h += '<div class="nr">';
   if (item && it['PEÇAS']) h += '<label>PEÇAS COM DEFEITO (PREVISÃO)</label><div class="notas combina">' + esc(String(it['PEÇAS']).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">Sai do defeito e das observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
   if (item && (it._compradas || []).length) h += '<label>PEÇA COMPRADA QUE SERVE</label><div class="notas combina">' + esc(it._compradas.join('\n')) + '</div>';
   if (item && it['COMBINA COM']) h += '<label>COMBINA COM (MESMO MODELO)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
-  h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p>';
+  h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p></div>';
   h += '<label>SITUAÇÃO</label><div class="sits" id="sits">' + situacoes().map(function(s){ return '<button class="chip' + (s===S.sit?' on':'') + '" data-s="' + esc(s) + '">' + esc(s.charAt(0) + s.slice(1).toLowerCase()) + '</button>'; }).join('') + '</div>';
   h += '<div class="grade">';
   CAMPOS.forEach(function(c, k){
-    var html = campo(c[0], c[1], it[c[0]]);
-    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO' || c[0]==='DEFEITO') ? '</div>' + html + '<div class="grade">' : '<div>' + html + '</div>';
+    var html = campo(c[0], c[1], it[c[0]]), nr = CAMPOS_REPARO.indexOf(c[0]) < 0 ? ' class="nr"' : '';
+    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO' || c[0]==='DEFEITO') ? '</div><div' + nr + '>' + html + '</div><div class="grade">' : '<div' + nr + '>' + html + '</div>';
   });
   h += '</div>';
   var obs = (it._obs || []).slice().reverse();
-  if (obs.length) h += '<label>O QUE JÁ FOI FEITO (' + obs.length + ')</label>' + obs.map(function(o){
+  if (obs.length) h += '<div class="nr"><label>O QUE JÁ FOI FEITO (' + obs.length + ')</label>' + obs.map(function(o){
     return '<div class="obs"><div class="quem">' + esc(o.data) + ' · ' + esc(o.tecnico || '—') + '</div>' + esc(o.texto) + '</div>';
-  }).join('');
-  h += '<label>NOVA OBSERVAÇÃO</label><textarea id="f_nota" placeholder="O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok"></textarea>';
+  }).join('') + '</div>';
+  h += '<label id="lNota">NOVA OBSERVAÇÃO</label><textarea id="f_nota" placeholder="O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok"></textarea>';
   h += '<div class="rodape" style="text-align:left">Fica com seu nome e a data de hoje. As observações antigas nunca são apagadas.</div>';
   if (item) h += '<div class="rodape">Entrada ' + esc(it['DATA ENTRADA']||'—') + ' · atualizado ' + esc(it['ÚLTIMA ATUALIZAÇÃO']||'—') + '</div>';
   $('form').innerHTML = h;
@@ -233,7 +261,8 @@ function abrir(item){
     fd.parentNode.insertBefore(box, fd.nextSibling.nextSibling);
     fd.placeholder = 'Toque abaixo ou dite pelo microfone';
   }
-  Array.prototype.forEach.call($('sits').children, function(b){ b.onclick = function(){ S.sit = b.getAttribute('data-s'); Array.prototype.forEach.call($('sits').children, function(x){ x.classList.toggle('on', x===b); }); }; });
+  Array.prototype.forEach.call($('sits').children, function(b){ b.onclick = function(){ S.sit = b.getAttribute('data-s'); Array.prototype.forEach.call($('sits').children, function(x){ x.classList.toggle('on', x===b); }); aplicarModo(); }; });
+  aplicarModo();
   $('pItem').classList.add('on');
   $('pItem').scrollTop = 0;
 }
@@ -250,6 +279,8 @@ function salvar(){
   item['SITUAÇÃO'] = S.sit;
   var nota = $('f_nota').value.trim();
   if (nota) item._nota = nota;
+  if (S.sit === 'REPARADO' && (!S.atual || S.atual['SITUAÇÃO'] !== 'REPARADO') && !nota){ aviso('Escreva o que foi feito: vai para a planilha de produção.'); $('f_nota').focus(); return; }
+  if (S.sit === 'REPARADO' && nota) item._producao = nota;
   if (nota && !S.tecnico){ aviso('Escolha seu nome antes, para a observação ficar com ele.'); pedirNome(); return; }
   if (!S.atual && !item.SERIAL && !item.MODELO) { aviso('Preencha pelo menos o serial ou o modelo.'); return; }
   $('salvar').disabled = true;
@@ -389,12 +420,15 @@ function preencherDaEtiqueta(r){
   };
   // IA do SCAN só quando o código de barras não resolveu (sem serial ou modelo desconhecido).
   var ia = function(){
-    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO'))) return;
-    var c = r.canvas, k = Math.min(1, 1280 / Math.max(c.width, c.height)), z = document.createElement('canvas');
+    // Pula a IA só quando o código de barras deu um serial com cara de serial de marca conhecida e o modelo já é conhecido.
+    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO') && marcaPeloSerial(valorCampo('SERIAL')))) return;
+    var c = r.canvas, k = Math.min(1, 2000 / Math.max(c.width, c.height)), z = document.createElement('canvas');
     z.width = Math.round(c.width * k); z.height = Math.round(c.height * k); z.getContext('2d').drawImage(c, 0, 0, z.width, z.height);
     aviso('Lendo o texto da etiqueta com IA…');
-    chamar('apiLerComIA', [z.toDataURL('image/jpeg', 0.8), { serial: valorCampo('SERIAL'), ean: valorCampo('EAN') }], function(d){
+    chamar('apiLerComIA', [z.toDataURL('image/jpeg', 0.92), { serial: valorCampo('SERIAL'), ean: valorCampo('EAN'), outros: r.outros || [] }], function(d){
       if (!d || d.erro) { aviso(d && d.erro || 'A IA não leu.'); return; }
+      // O leitor de código de barras pode ter pego o P/N como serial: se a IA leu outro serial impresso, vale o da IA.
+      if (d.SERIAL && valorCampo('SERIAL') && norm(d.SERIAL) !== norm(valorCampo('SERIAL')) && !S.atual && $('f_SERIAL')) $('f_SERIAL').value = '';
       var tinhaSerial = valorCampo('SERIAL');
       preencher(d);
       if (!tinhaSerial && d.SERIAL) {

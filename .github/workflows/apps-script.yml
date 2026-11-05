@@ -23,6 +23,16 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+      - name: Conferir se o app abre sem login
+        continue-on-error: true
+        run: |
+          URL="https://script.google.com/macros/s/AKfycbyJartOZ2D2KeLQ_IFelaF1pemHf1Xun0MlglVAE9UDTeQM8e847r32Yxfis3VL5BClsg/exec"
+          curl -sL -A "Mozilla/5.0 (Linux; Android 14) Mobile" -o pagina.html -w "HTTP %{http_code} | final: %{url_effective}\n" "$URL" | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -o '<title>[^<]*</title>' pagina.html | head -1 | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -o 'Não foi possível abrir o arquivo\|unable to open the file\|Manutenção' pagina.html | sort | uniq -c | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "POST do site (CORS):"
+          curl -sL -D - -o resposta.json -H "Origin: https://jpaapw-star.github.io" -H "Content-Type: text/plain;charset=utf-8" --data '{"api":"apiIaLigada","args":[]}' "$URL" | grep -i "^HTTP\|access-control-allow-origin\|^content-type" | tee -a "$GITHUB_STEP_SUMMARY"
+          head -c 300 resposta.json | tee -a "$GITHUB_STEP_SUMMARY"
 
   enviar:
     needs: testes
@@ -69,9 +79,33 @@ jobs:
             DEP=$(clasp deployments | grep -v '@HEAD' | grep -o 'AKfyc[A-Za-z0-9_-]*' | head -1 || true)
           fi
           echo "App da Web: https://script.google.com/macros/s/$DEP/exec" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Site próprio do app (GitHub Pages): a mesma tela, falando com o app sem cookies.
+          mkdir -p site
+          sed "s#<!--SITE-->#<title>Manutenção</title><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><script>window.API_URL='https://script.google.com/macros/s/$DEP/exec';</script>#" src/Index.html > site/index.html
+          touch site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
       - name: Apagar credenciais
         if: always()
         run: rm -f ~/.clasprc.json src/00_Segredos.gs
+
+  site:
+    needs: enviar
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publicar.outputs.page_url }}
+    steps:
+      - id: publicar
+        uses: actions/deploy-pages@v4
+      - name: Mostrar o endereço
+        run: echo "Site do app - ${{ steps.publicar.outputs.page_url }}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   notas:
     needs: [testes, enviar]

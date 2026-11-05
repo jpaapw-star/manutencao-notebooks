@@ -197,3 +197,113 @@ test('peças compradas: tipo, modelos compatíveis e aparelhos que precisam', ()
   assert.strictEqual(p[0].recebe[0].de, 'PEÇA COMPRADA NV156FHM');
   assert.ok(p[0].recebe[0].comprada);
 });
+
+test('compatibilidade: peça universal e modelos que compartilham peça', () => {
+  const { pecaServe, compatDe } = m.exports;
+  const compat = compatDe(['Memória', 'SSD'], [['PEÇA', 'MODELOS'], ['Tela', 'E1504FA, X1504ZA'], ['Teclado', 'X515']]);
+  assert.deepStrictEqual(compat.universais, ['MEMÓRIA', 'SSD']);
+  assert.strictEqual(compat.grupos.length, 1);
+  assert.ok(pecaServe('SSD', 'E1504FA', 'IDEAPAD 15IRH8', compat));
+  assert.ok(pecaServe('TELA', 'VIVOBOOK E1504FA', 'VIVOBOOK X1504ZA', compat));
+  assert.ok(!pecaServe('TECLADO', 'E1504FA', 'X1504ZA', compat));
+  const itens = [
+    { MODELO: 'VIVOBOOK E1504FA', SERIAL: 'A', 'PEÇAS': 'TELA, SSD', 'SITUAÇÃO': 'EM REPARO', TIPO: 'NOTEBOOK', _linha: 2 },
+    { MODELO: 'VIVOBOOK X1504ZA', SERIAL: 'B', 'PEÇAS': 'PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', TIPO: 'NOTEBOOK', _linha: 3 },
+    { MODELO: 'IDEAPAD 15IRH8', SERIAL: 'C', 'PEÇAS': 'TELA', 'SITUAÇÃO': 'SUCATA', TIPO: 'NOTEBOOK', _linha: 4 }
+  ];
+  const p = planosDeMontagem(itens, [], compat);
+  assert.strictEqual(p.length, 1);
+  const de = {}; p[0].recebe.forEach(r => { de[r.peca] = r.de; });
+  assert.deepStrictEqual(de, { TELA: 'B', SSD: 'B' });
+  assert.strictEqual(p[0].recebe[0].outroModelo, 'VIVOBOOK X1504ZA');
+  // sem a tabela, tela de outro modelo não serve
+  assert.strictEqual(planosDeMontagem(itens, [], compatDe(['SSD'], [])).length, 0);
+});
+
+test('código da peça: tira o part number da resposta da IA', () => {
+  const { codigoPeca } = m.exports;
+  assert.strictEqual(codigoPeca('NV156FHM-N48'), 'NV156FHM-N48');
+  assert.strictEqual(codigoPeca('O código provável é L15M3PB0.'), 'L15M3PB0');
+  assert.strictEqual(codigoPeca('0B200-03940000'), '0B200-03940000');
+  assert.strictEqual(codigoPeca('TELA LED'), '');
+  assert.strictEqual(codigoPeca(''), '');
+});
+
+test('vocabulário: palavras novas e as que o João ensina na LISTAS', () => {
+  const { preverPecas, palavrasExtras } = m.exports;
+  assert.match(preverPecas('Imagem com listras verticais', []).texto, /TELA/);
+  assert.match(preverPecas('só liga na tomada', []).texto, /BATERIA/);
+  assert.strictEqual(preverPecas('lente quebrada', []).texto, '');
+  const ex = palavrasExtras(['TELA: LENTE, vidro', 'CÂMERA = lentinha (IA)', 'lixo sem dois pontos']);
+  assert.deepStrictEqual(ex.TELA, ['LENTE', 'vidro']);
+  assert.deepStrictEqual(ex.WEBCAM, ['lentinha']);
+  assert.match(preverPecas('lente quebrada', [], ex).texto, /TELA \(CONFIRMADA\)/);
+});
+
+test('previsão da IA só entra quando as regras não acham nada', () => {
+  const { previsaoFinal, respostaPrevisao } = m.exports;
+  assert.deepStrictEqual(previsaoFinal({ texto: 'TELA (PROVÁVEL)', pecas: ['TELA'] }, ['TECLADO']).pecas, ['TELA']);
+  const f = previsaoFinal({ texto: 'DESCARTADO: TELA', pecas: [] }, ['TELA', 'FLAT']);
+  assert.strictEqual(f.texto, 'FLAT (SUSPEITA · IA) | DESCARTADO: TELA');
+  const r = respostaPrevisao('TELA = listras na imagem\n- PLACA-MÃE: "não dá sinal"\nFOGUETE = x', ['TELA', 'PLACA-MÃE']);
+  assert.deepStrictEqual(r.pecas, ['TELA', 'PLACA-MÃE']);
+  assert.deepStrictEqual(r.palavras.map(x => x.palavra), ['LISTRAS NA IMAGEM', 'NÃO DÁ SINAL']);
+});
+
+test('medidas: polegadas, pinos, DDR e tipo de SSD', () => {
+  const { medidas, textoMedidas, medidasBatem } = m.exports;
+  assert.deepStrictEqual(medidas('Tela 15.6 LED slim 30 pinos'), { POLEGADAS: '15.6', PINOS: '30' });
+  assert.deepStrictEqual(medidas('Tela 14" 40P fosca'), { POLEGADAS: '14', PINOS: '40' });
+  assert.deepStrictEqual(medidas('Tela 15,6 polegadas'), { POLEGADAS: '15.6' });
+  assert.deepStrictEqual(medidas('Memória 8GB DDR4 2666'), { DDR: 'DDR4' });
+  assert.deepStrictEqual(medidas('SSD 256 M.2 NVMe'), { SSD: 'NVME' });
+  assert.deepStrictEqual(medidas('SSD 480 SATA'), { SSD: 'SATA 2.5' });
+  assert.deepStrictEqual(medidas('Vivobook E1504FA'), {});
+  assert.strictEqual(textoMedidas({ POLEGADAS: '15.6', PINOS: '30' }), '15.6" · 30 pinos');
+  assert.ok(!medidasBatem('TELA', { POLEGADAS: '14' }, { POLEGADAS: '15.6' }));
+  assert.ok(medidasBatem('TELA', {}, { POLEGADAS: '15.6' }));
+  assert.ok(medidasBatem('TECLADO', { POLEGADAS: '14' }, { POLEGADAS: '15.6' }));
+});
+
+test('peça comprada com medida diferente não é sugerida', () => {
+  const { estoqueDe, aparelhosParaPecas } = m.exports;
+  const cab = ['DATA COMPRA', 'PEÇA', 'CÓDIGO DA PEÇA', 'SERVE NOS MODELOS', 'VALOR', 'LINK', 'SITUAÇÃO', 'USADA EM (SERIAL)', 'MODELOS COMPATÍVEIS (PESQUISA)', 'APARELHOS QUE PRECISAM', 'MEDIDA / CONECTOR'];
+  const est = estoqueDe([cab, ['', 'Tela LED', 'X1', 'E1504FA', '', '', 'EM ESTOQUE', '', '', '', '15.6" · 30 pinos']]);
+  const itens = [
+    { SERIAL: 'A1', MODELO: 'E1504FA', 'SITUAÇÃO': 'EM REPARO', 'PEÇAS': 'TELA (CONFIRMADA)', DEFEITO: 'tela 15.6 quebrada' },
+    { SERIAL: 'B2', MODELO: 'E1504FA', 'SITUAÇÃO': 'EM REPARO', 'PEÇAS': 'TELA (CONFIRMADA)', DEFEITO: 'tela quebrada, conector 40 pinos' }
+  ];
+  assert.deepStrictEqual(aparelhosParaPecas(est, itens, null), ['A1 (E1504FA)']);
+});
+
+test('conferência da pesquisa dos modelos', () => {
+  const { precisaPesquisar, conferirPesquisa, respostaModelos } = m.exports;
+  const hoje = new Date(2026, 10, 5);
+  assert.ok(precisaPesquisar('', '', 'X1', hoje));
+  assert.ok(!precisaPesquisar('E1504FA', 'Pesquisado com o código X1 em 01/11/2026.', 'X1', hoje));
+  assert.ok(precisaPesquisar('E1504FA', 'Pesquisado com o código X1 em 01/11/2026.', 'X2', hoje));
+  assert.ok(!precisaPesquisar('NÃO ACHEI', 'Pesquisado com o código X1 em 01/11/2026.', 'X1', hoje));
+  assert.ok(precisaPesquisar('NÃO ACHEI', 'Pesquisado com o código X1 em 10/10/2026.', 'X1', hoje));
+  assert.strictEqual(conferirPesquisa('', 'E1504FA').valor, 'NÃO ACHEI');
+  assert.strictEqual(conferirPesquisa('X1504ZA', 'E1504FA').valor, 'CONFERIR: X1504ZA');
+  assert.strictEqual(conferirPesquisa('E1504FA, X1504ZA', 'E1504F').valor, 'E1504FA, X1504ZA');
+  assert.deepStrictEqual(respostaModelos('MODELOS: E1504FA, X1504ZA\nMEDIDA: 15,6 polegadas, 30 pinos'), { modelos: 'E1504FA, X1504ZA', medida: '15.6" · 30 pinos' });
+  assert.deepStrictEqual(respostaModelos('E1504FA, X1504ZA'), { modelos: 'E1504FA, X1504ZA', medida: '' });
+});
+
+test('planilha de manutenções: aba do mês e descrição no jeito dela', () => {
+  const { abaDoMes, ultimaAbaDeMes, descricaoReparo, linhaManutencao } = m.exports;
+  assert.strictEqual(abaDoMes(new Date(2026, 11, 1)), 'DEZEMBRO 2026');
+  assert.strictEqual(abaDoMes(new Date(2026, 2, 1)), 'MARÇO 2026');
+  assert.strictEqual(ultimaAbaDeMes(['NOVEMBRO 2026', 'OUTUBRO 2026', 'PRODUÇÃO 2026', 'DEZEMBRO', 'MARÇO 2026', 'outubro']), 'NOVEMBRO 2026');
+  assert.strictEqual(descricaoReparo('TROCADO: WEBCAM', [], ''), 'TROCA DE WEBCAM');
+  assert.strictEqual(descricaoReparo('TELA (PROVÁVEL), WI-FI (SUSPEITA), ÁUDIO (CONFIRMADA)', [], ''), 'REPARO NA INTERFACE DE VÍDEO, REDE E ÁUDIO');
+  assert.strictEqual(descricaoReparo('ÁUDIO (CONFIRMADA) | TROCADO: SSD, WI-FI', [], ''), 'TROCA DE SSD E PLACA DE REDE E REPARO NA INTERFACE DE ÁUDIO');
+  assert.strictEqual(descricaoReparo('CHIP DA BIOS (SUSPEITA)', ['formatei o windows'], ''), 'REPARO NA INTERFACE DE INICIALIZAÇÃO E FORMATAÇÃO DO SISTEMA');
+  assert.strictEqual(descricaoReparo('DESCARTADO: TELA', ['Reconectei a subplaca dos botões'], ''), 'RECONECTEI A SUBPLACA DOS BOTÕES');
+  const cab = ['TÉCNICO', 'MARCA', 'MODELO', 'SERIAL', 'DATA', 'DESCRIÇAO', 'ESTADO ', 'ENTREGUE', 'TIPO'];
+  const d = new Date(2026, 10, 5);
+  assert.deepStrictEqual(linhaManutencao(cab, { 'TÉCNICO': 'João Pedro', MARCA: 'Asus', MODELO: 'E1504FA', SERIAL: 'w6n0b' }, 'TROCA DE TELA', d),
+    ['JOÃO PEDRO', 'ASUS', 'E1504FA', 'W6N0B', d, 'TROCA DE TELA', '', '', '']);
+  assert.strictEqual(linhaManutencao(['TECNICO', 'MARCA', 'MODELO', 'SÉRIE', 'DATA', 'DEFEITO'], { SERIAL: 'X1' }, 'Y', d)[3], 'X1');
+});
