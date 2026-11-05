@@ -15,7 +15,7 @@ var PLANILHAS = {
   ARRUMADOS: '10zHHWjV6Xva7ojDr7GpGRe_NuJufYZ62qhpwhMU3Hcs'
 };
 // Situações que contam como arrumado (vão para a planilha de manutenções do mês).
-var ARRUMADO = ['REPARADO', 'FINALIZADO'];
+var ARRUMADO = ['REPARADO'];   // só REPARADO (escolhido no app); FINALIZADO vem do controle de qualidade e não entra
 var MESES = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
 var QUALIDADE_ABA = 'TabelaQualidade';
 // true: só conta como finalizado quando "APROVADO?" = Sim. false: basta o serial aparecer.
@@ -1276,11 +1276,13 @@ function registrarArrumados_(itens, mapa) {
     var sn = normalizarSerial(it.SERIAL);
     if (!ja[sn]) {
       var textos = obsDoItem_(mapa, it).map(function (o) { return o.texto; });
-      acrescentarLinha_(ss, aba, linhaManutencao(cab, it, descricaoReparo(it['PEÇAS'], textos, it.DEFEITO), dataHoje));
+      var escrito = marcas['prod:' + sn];
+      acrescentarLinha_(ss, aba, linhaManutencao(cab, it, escrito || descricaoReparo(it['PEÇAS'], textos, it.DEFEITO), dataHoje));
       ja[sn] = true;
       feitos++;
     }
     props.setProperty('arr:' + sn, Utilities.formatDate(hoje, 'America/Sao_Paulo', 'dd/MM/yyyy'));
+    props.deleteProperty('prod:' + sn);
   });
   return feitos;
 }
@@ -1349,7 +1351,11 @@ function apiInicio() {
     return p.length === 3 && new Date(+p[2], +p[1] - 1, +p[0]) >= limite;
   });
   var mapa = lerObs_(ss);
-  itens.forEach(function (it) { it._obs = obsParaTela_(obsDoItem_(mapa, it)); });
+  itens.forEach(function (it) {
+    var o = obsDoItem_(mapa, it);
+    it._obs = obsParaTela_(o);
+    it._sugestao = descricaoReparo(it['PEÇAS'], o.map(function (x) { return x.texto; }), it.DEFEITO);
+  });
   var est = lerEstoque_(ss), compat = lerCompat_(ss);
   var montagens = planosDeMontagem(d.itens, est, compat);
   itens.forEach(function (it) {
@@ -1467,6 +1473,9 @@ function apiSalvar(item, tecnico) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
+    // O que foi feito, escrito ao marcar REPARADO: vira a DESCRIÇÃO na planilha de produção.
+    var sn0 = normalizarSerial(item.SERIAL || item._serial);
+    if (item._producao && sn0) PropertiesService.getScriptProperties().setProperty('prod:' + sn0, String(item._producao).trim().toUpperCase());
     var ss = planilha_();
     var aba = abaDe_(ss, item._linha ? item._aba : ABA);
     var cab = cabecalho_(aba);

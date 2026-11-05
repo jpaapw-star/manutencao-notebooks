@@ -43,6 +43,7 @@
   .topo { display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--fundo); padding:12px 16px; border-bottom:1px solid var(--linha); z-index:2; }
   .topo button { background:none; border:0; color:var(--texto); font:inherit; font-size:17px; padding:4px; }
   .topo .ok { font-weight:700; }
+  #form.reparo .nr { display:none !important; }
   .grade { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
   .sits { display:flex; flex-wrap:wrap; gap:8px; }
   .notas.combina { color:var(--texto); border:1px solid var(--fraco); }
@@ -135,7 +136,18 @@ function carregar(depois){
   });
 }
 
-function situacoes(){ return (S.listas['SITUAÇÃO'] || []).concat(ENCERRADAS.filter(function(s){ return (S.listas['SITUAÇÃO']||[]).indexOf(s) < 0; })); }
+// FINALIZADO não é escolhido no app: só vem do controle de qualidade. Arrumado = REPARADO.
+function situacoes(){ return (S.listas['SITUAÇÃO'] || []).concat(ENCERRADAS.filter(function(s){ return (S.listas['SITUAÇÃO']||[]).indexOf(s) < 0; })).filter(function(s){ return s !== 'FINALIZADO'; }); }
+// Com REPARADO, a tela mostra só o que vai para a planilha de produção (MANUTENÇÕES) e o que foi feito.
+var CAMPOS_REPARO = ['TÉCNICO', 'MARCA', 'MODELO', 'SERIAL'];
+function aplicarModo(){
+  var rep = S.sit === 'REPARADO';
+  $('form').classList.toggle('reparo', rep);
+  $('lNota').textContent = rep ? 'O QUE FOI FEITO (VAI PARA A PLANILHA DE PRODUÇÃO)' : 'NOVA OBSERVAÇÃO';
+  $('f_nota').placeholder = rep ? 'Ex.: TROCA DE TELA E REPARO NA INTERFACE DE ÁUDIO' : 'O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok';
+  if (rep && !$('f_nota').value.trim() && S.atual && S.atual._sugestao) $('f_nota').value = S.atual._sugestao;
+  if (rep && !valorCampo('TÉCNICO') && S.tecnico) porCampo('TÉCNICO', S.tecnico);
+}
 
 function desenhar(){
   var abertos = S.itens.filter(function(i){ return ENCERRADAS.indexOf(String(i['SITUAÇÃO']).toUpperCase()) < 0; });
@@ -216,22 +228,23 @@ function abrir(item){
   S.sit = it['SITUAÇÃO'] || '';
   $('tituloItem').textContent = item ? (it.SERIAL || 'Aparelho') : 'Novo aparelho';
   var h = '';
+  h += '<div class="nr">';
   if (item && it['PEÇAS']) h += '<label>PEÇAS COM DEFEITO (PREVISÃO)</label><div class="notas combina">' + esc(String(it['PEÇAS']).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">Sai do defeito e das observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
   if (item && (it._compradas || []).length) h += '<label>PEÇA COMPRADA QUE SERVE</label><div class="notas combina">' + esc(it._compradas.join('\n')) + '</div>';
   if (item && it['COMBINA COM']) h += '<label>COMBINA COM (MESMO MODELO)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
-  h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p>';
+  h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p></div>';
   h += '<label>SITUAÇÃO</label><div class="sits" id="sits">' + situacoes().map(function(s){ return '<button class="chip' + (s===S.sit?' on':'') + '" data-s="' + esc(s) + '">' + esc(s.charAt(0) + s.slice(1).toLowerCase()) + '</button>'; }).join('') + '</div>';
   h += '<div class="grade">';
   CAMPOS.forEach(function(c, k){
-    var html = campo(c[0], c[1], it[c[0]]);
-    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO' || c[0]==='DEFEITO') ? '</div>' + html + '<div class="grade">' : '<div>' + html + '</div>';
+    var html = campo(c[0], c[1], it[c[0]]), nr = CAMPOS_REPARO.indexOf(c[0]) < 0 ? ' class="nr"' : '';
+    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO' || c[0]==='DEFEITO') ? '</div><div' + nr + '>' + html + '</div><div class="grade">' : '<div' + nr + '>' + html + '</div>';
   });
   h += '</div>';
   var obs = (it._obs || []).slice().reverse();
-  if (obs.length) h += '<label>O QUE JÁ FOI FEITO (' + obs.length + ')</label>' + obs.map(function(o){
+  if (obs.length) h += '<div class="nr"><label>O QUE JÁ FOI FEITO (' + obs.length + ')</label>' + obs.map(function(o){
     return '<div class="obs"><div class="quem">' + esc(o.data) + ' · ' + esc(o.tecnico || '—') + '</div>' + esc(o.texto) + '</div>';
-  }).join('');
-  h += '<label>NOVA OBSERVAÇÃO</label><textarea id="f_nota" placeholder="O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok"></textarea>';
+  }).join('') + '</div>';
+  h += '<label id="lNota">NOVA OBSERVAÇÃO</label><textarea id="f_nota" placeholder="O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok"></textarea>';
   h += '<div class="rodape" style="text-align:left">Fica com seu nome e a data de hoje. As observações antigas nunca são apagadas.</div>';
   if (item) h += '<div class="rodape">Entrada ' + esc(it['DATA ENTRADA']||'—') + ' · atualizado ' + esc(it['ÚLTIMA ATUALIZAÇÃO']||'—') + '</div>';
   $('form').innerHTML = h;
@@ -248,7 +261,8 @@ function abrir(item){
     fd.parentNode.insertBefore(box, fd.nextSibling.nextSibling);
     fd.placeholder = 'Toque abaixo ou dite pelo microfone';
   }
-  Array.prototype.forEach.call($('sits').children, function(b){ b.onclick = function(){ S.sit = b.getAttribute('data-s'); Array.prototype.forEach.call($('sits').children, function(x){ x.classList.toggle('on', x===b); }); }; });
+  Array.prototype.forEach.call($('sits').children, function(b){ b.onclick = function(){ S.sit = b.getAttribute('data-s'); Array.prototype.forEach.call($('sits').children, function(x){ x.classList.toggle('on', x===b); }); aplicarModo(); }; });
+  aplicarModo();
   $('pItem').classList.add('on');
   $('pItem').scrollTop = 0;
 }
@@ -265,6 +279,8 @@ function salvar(){
   item['SITUAÇÃO'] = S.sit;
   var nota = $('f_nota').value.trim();
   if (nota) item._nota = nota;
+  if (S.sit === 'REPARADO' && (!S.atual || S.atual['SITUAÇÃO'] !== 'REPARADO') && !nota){ aviso('Escreva o que foi feito: vai para a planilha de produção.'); $('f_nota').focus(); return; }
+  if (S.sit === 'REPARADO' && nota) item._producao = nota;
   if (nota && !S.tecnico){ aviso('Escolha seu nome antes, para a observação ficar com ele.'); pedirNome(); return; }
   if (!S.atual && !item.SERIAL && !item.MODELO) { aviso('Preencha pelo menos o serial ou o modelo.'); return; }
   $('salvar').disabled = true;
