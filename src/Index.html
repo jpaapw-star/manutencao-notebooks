@@ -86,7 +86,7 @@ var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
 var CAMPOS = [
   ['SERIAL','text'], ['TIPO','lista'], ['MARCA','lista+'], ['MODELO','text'], ['NF','text'], ['DESCRIÇÃO','text'], ['EAN','text'],
   ['GARANTIA','lista'], ['DEFEITO','defeito'], ['PEÇAS COM DEFEITO','text'], ['TÉCNICO','lista+'], ['LOCAL','lista'], ['PEÇAS','text'], ['VALOR PEÇAS','text'],
-  ['LINK PEÇA','text'], ['PROTOCOLO','text'], ['DATA ENVIO','data'], ['DATA RETORNO','data']
+  ['LINK PEÇA','text']
 ];
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }

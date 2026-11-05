@@ -22,11 +22,11 @@ var ABA_NOMES_ANTIGOS = ['EQUIPAMENTOS'];
 var FINALIZADO = 'FINALIZADO';
 var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
 var COLUNAS = ['DATA ENTRADA', 'TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO', 'EAN', 'SERIAL', 'NF', 'GARANTIA', 'DEFEITO',
-  'TÉCNICO', 'SITUAÇÃO', 'LOCAL', 'PEÇAS', 'VALOR PEÇAS', 'LINK PEÇA', 'PROTOCOLO', 'DATA ENVIO', 'DATA RETORNO',
+  'TÉCNICO', 'SITUAÇÃO', 'LOCAL', 'PEÇAS', 'VALOR PEÇAS', 'LINK PEÇA',
   'O QUE FOI FEITO / NOTAS', 'ÚLTIMA ATUALIZAÇÃO', 'PEÇAS COM DEFEITO', 'COMBINA COM'];
 // Colunas que o app preenche sozinho (acrescentadas no fim se faltarem).
 var COLUNAS_AUTO = ['PEÇAS COM DEFEITO', 'COMBINA COM'];
-var DATAS = ['DATA ENTRADA', 'DATA ENVIO', 'DATA RETORNO', 'ÚLTIMA ATUALIZAÇÃO'];
+var DATAS = ['DATA ENTRADA', 'ÚLTIMA ATUALIZAÇÃO'];
 var VISTAS = { GARANTIA: ['ENVIADO PARA GARANTIA', 'AGUARDANDO NF'], 'PEÇAS': ['AGUARDANDO PEÇA', 'PEÇA PEDIDA'],
   SUCATA: ['SUCATA'], FINALIZADOS: ['FINALIZADO'] };
 var HISTORICO = 'HISTÓRICO';
@@ -177,7 +177,7 @@ function letra_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = Strin
 /** Deixa a planilha no formato combinado. Roda a cada abertura (rápido quando já está pronta). */
 function prepararPlanilha_() {
   var cache = CacheService.getScriptCache();
-  if (cache.get('pronta') === '2') return;
+  if (cache.get('pronta') === '3') return;
   var ss = planilha_();
   var aba = abaPrincipal_(ss);
   var meus = ss.getSheetByName('MEUS');
@@ -229,7 +229,7 @@ function prepararPlanilha_() {
     h.setFrozenRows(1);
   }
   garantirGatilho_();
-  cache.put('pronta', '2', 21600);
+  cache.put('pronta', '3', 21600);
 }
 
 function garantirGatilho_() {
