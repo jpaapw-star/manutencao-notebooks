@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  :root { --fundo:#fff; --cartao:#f2f2f2; --linha:#e3e3e3; --texto:#000; --fraco:#6e6e6e; --botao:#000; --botaoTexto:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fundo:#000; --cartao:#161616; --linha:#2a2a2a; --texto:#fff; --fraco:#9a9a9a; --botao:#fff; --botaoTexto:#000; }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--fundo); color:var(--texto); font:16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
+  .tela { max-width:720px; margin:0 auto; padding:16px 16px 96px; }
+  h1 { font-size:30px; font-weight:700; letter-spacing:-.5px; margin:8px 0 4px; }
+  .sub { color:var(--fraco); font-size:14px; margin-bottom:16px; }
+  .sub a { color:var(--fraco); }
+  input, select, textarea { width:100%; font:inherit; color:var(--texto); background:var(--cartao); border:1px solid transparent; border-radius:12px; padding:12px 14px; outline:none; }
+  input:focus, select:focus, textarea:focus { border-color:var(--fraco); }
+  textarea { min-height:90px; resize:vertical; }
+  label { display:block; font-size:13px; color:var(--fraco); margin:14px 0 6px; }
+  .busca { display:flex; gap:8px; }
+  .busca input { flex:1; }
+  .chips { display:flex; gap:8px; overflow-x:auto; padding:14px 0 6px; scrollbar-width:none; }
+  .chip { flex:none; border:1px solid var(--linha); background:none; color:var(--texto); border-radius:999px; padding:7px 13px; font:inherit; font-size:14px; }
+  .chip.on { background:var(--botao); color:var(--botaoTexto); border-color:var(--botao); }
+  .lista { margin-top:8px; }
+  .item { display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid var(--linha); color:inherit; font:inherit; padding:14px 2px; }
+  .item b { font-weight:600; }
+  .item .l2 { color:var(--fraco); font-size:14px; margin-top:2px; }
+  .vazio { color:var(--fraco); text-align:center; padding:40px 0; }
+  .btn { border:0; border-radius:12px; padding:13px 18px; font:inherit; font-weight:600; background:var(--botao); color:var(--botaoTexto); }
+  .btn.sec { background:var(--cartao); color:var(--texto); }
+  .btn:disabled { opacity:.5; }
+  .flutua { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(20px + env(safe-area-inset-bottom)); box-shadow:0 6px 24px rgba(0,0,0,.25); }
+  .painel { position:fixed; inset:0; background:var(--fundo); overflow-y:auto; display:none; z-index:5; }
+  .painel.on { display:block; }
+  .topo { display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--fundo); padding:12px 16px; border-bottom:1px solid var(--linha); z-index:2; }
+  .topo button { background:none; border:0; color:var(--texto); font:inherit; font-size:17px; padding:4px; }
+  .topo .ok { font-weight:700; }
+  .grade { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+  .sits { display:flex; flex-wrap:wrap; gap:8px; }
+  .notas.combina { color:var(--texto); border:1px solid var(--fraco); }
+  .notas { white-space:pre-wrap; color:var(--fraco); font-size:14px; background:var(--cartao); border-radius:12px; padding:12px 14px; }
+  .aviso { position:fixed; left:16px; right:16px; bottom:calc(84px + env(safe-area-inset-bottom)); max-width:520px; margin:0 auto; background:var(--botao); color:var(--botaoTexto); border-radius:12px; padding:12px 16px; display:none; z-index:9; text-align:center; }
+  .aviso.on { display:block; }
+  .rodape { color:var(--fraco); font-size:13px; margin-top:24px; text-align:center; }
+  .rodape button { background:none; border:0; color:var(--fraco); text-decoration:underline; font:inherit; }
+  video { width:100%; border-radius:12px; margin-top:10px; display:none; }
+</style>
+</head>
+<body>
+<div class="tela">
+  <h1>Manutenção</h1>
+  <div class="sub" id="sub">Carregando…</div>
+  <div class="busca">
+    <input id="busca" type="search" placeholder="Serial, modelo ou defeito" autocomplete="off">
+    <button class="btn sec" id="ler" style="display:none" title="Ler código de barras">Ler</button>
+  </div>
+  <video id="cam" playsinline muted></video>
+  <div class="chips" id="chips"></div>
+  <div class="lista" id="lista"></div>
+  <div class="rodape" id="rodape"></div>
+</div>
+<button class="btn flutua" id="novo">Novo aparelho</button>
+
+<div class="painel" id="pQuem">
+  <div class="tela">
+    <h1>Quem é você?</h1>
+    <div class="sub">Fica salvo neste aparelho.</div>
+    <div class="sits" id="nomes"></div>
+    <label>Outro nome</label>
+    <input id="outroNome" placeholder="Seu nome">
+    <p><button class="btn" id="salvarNome">Continuar</button></p>
+  </div>
+</div>
+
+<div class="painel" id="pItem">
+  <div class="topo"><button id="fechar">Cancelar</button><b id="tituloItem">Aparelho</b><button class="ok" id="salvar">Salvar</button></div>
+  <div class="tela" id="form"></div>
+</div>
+
+<div class="aviso" id="aviso"></div>
+
+<script>
+var S = { listas:{}, itens:[], filtro:'ABERTOS', tecnico:'', atual:null };
+var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
+var CAMPOS = [
+  ['SERIAL','text'], ['TIPO','lista'], ['MARCA','lista+'], ['MODELO','text'], ['NF','text'], ['DESCRIÇÃO','text'], ['EAN','text'],
+  ['GARANTIA','lista'], ['DEFEITO','defeito'], ['PEÇAS COM DEFEITO','text'], ['TÉCNICO','lista+'], ['LOCAL','lista'], ['PEÇAS','text'], ['VALOR PEÇAS','text'],
+  ['LINK PEÇA','text'], ['PROTOCOLO','text'], ['DATA ENVIO','data'], ['DATA RETORNO','data']
+];
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function guardar(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+function ler(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } }
+function aviso(t){ var a=$('aviso'); a.textContent=t; a.classList.add('on'); clearTimeout(aviso.t); aviso.t=setTimeout(function(){ a.classList.remove('on'); }, 3500); }
+function norm(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/O/g,'0'); }
+function sem(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase(); }
+function chamar(fn, args, ok, erro){
+  var r = google.script.run.withSuccessHandler(ok).withFailureHandler(function(e){ (erro||function(){})(e); aviso('Erro: ' + (e && e.message || e)); });
+  r[fn].apply(r, args || []);
+}
+
+function carregar(depois){
+  chamar('apiInicio', [], function(d){
+    S.listas = d.listas || {}; S.itens = d.itens || [];
+    $('sub').innerHTML = (S.tecnico ? esc(S.tecnico) + ' · <a href="#" id="trocar">trocar</a> · ' : '') + '<a href="' + esc(d.planilha) + '" target="_blank">abrir planilha</a>';
+    var t = $('trocar'); if (t) t.onclick = function(e){ e.preventDefault(); pedirNome(); };
+    desenhar();
+    if (depois) depois();
+  });
+}
+
+function situacoes(){ return (S.listas['SITUAÇÃO'] || []).concat(ENCERRADAS.filter(function(s){ return (S.listas['SITUAÇÃO']||[]).indexOf(s) < 0; })); }
+
+function desenhar(){
+  var abertos = S.itens.filter(function(i){ return ENCERRADAS.indexOf(String(i['SITUAÇÃO']).toUpperCase()) < 0; });
+  var cont = {}; S.itens.forEach(function(i){ var s = String(i['SITUAÇÃO']||'').toUpperCase(); cont[s] = (cont[s]||0) + 1; });
+  var chips = [['ABERTOS', 'Em aberto · ' + abertos.length]];
+  var comb = abertos.filter(function(i){ return i['COMBINA COM']; }).length;
+  if (comb) chips.push(['COMBINA', '⇄ Combinam · ' + comb]);
+  if (S.tecnico) chips.push(['MEUS', 'Comigo · ' + abertos.filter(function(i){ return sem(i['TÉCNICO']) === sem(S.tecnico); }).length]);
+  situacoes().forEach(function(s){ if (cont[s]) chips.push([s, s.charAt(0) + s.slice(1).toLowerCase() + ' · ' + cont[s]]); });
+  $('chips').innerHTML = chips.map(function(c){ return '<button class="chip' + (S.filtro===c[0]?' on':'') + '" data-f="' + esc(c[0]) + '">' + esc(c[1]) + '</button>'; }).join('');
+  Array.prototype.forEach.call($('chips').children, function(b){ b.onclick = function(){ S.filtro = b.getAttribute('data-f'); desenhar(); }; });
+  var q = sem($('busca').value).trim(), qn = norm($('busca').value);
+  var lista = (q ? S.itens : S.itens.filter(function(i){
+    var s = String(i['SITUAÇÃO']||'').toUpperCase();
+    if (S.filtro === 'ABERTOS') return ENCERRADAS.indexOf(s) < 0;
+    if (S.filtro === 'COMBINA') return ENCERRADAS.indexOf(s) < 0 && i['COMBINA COM'];
+    if (S.filtro === 'MEUS') return ENCERRADAS.indexOf(s) < 0 && sem(i['TÉCNICO']) === sem(S.tecnico);
+    return s === S.filtro;
+  })).filter(function(i){
+    if (!q) return true;
+    return (qn.length >= 3 && norm(i.SERIAL).indexOf(qn) >= 0) || sem([i.MODELO, i['DESCRIÇÃO'], i.DEFEITO, i.MARCA, i['TÉCNICO']].join(' ')).indexOf(q) >= 0;
+  }).slice().reverse();
+  $('lista').innerHTML = lista.length ? lista.map(function(i){
+    var t = [i.MARCA, i.MODELO].filter(Boolean).join(' ') || i['DESCRIÇÃO'] || i.TIPO || 'Aparelho';
+    var l2 = [i['SITUAÇÃO'], i['PEÇAS COM DEFEITO'] || i.DEFEITO, i['TÉCNICO']].filter(Boolean).join(' · ');
+    if (i['COMBINA COM']) l2 += ' · ⇄ combina com ' + String(i['COMBINA COM']).split('\n').length;
+    return '<button class="item" data-l="' + i._linha + '"><b>' + esc(t) + '</b> <span style="color:var(--fraco)">' + esc(i.SERIAL||'') + '</span><div class="l2">' + esc(l2) + '</div></button>';
+  }).join('') : '<div class="vazio">' + (q ? 'Nada encontrado. Toque em "Novo aparelho" para cadastrar.' : 'Nenhum aparelho aqui.') + '</div>';
+  Array.prototype.forEach.call($('lista').querySelectorAll('.item'), function(b){
+    b.onclick = function(){ var l = +b.getAttribute('data-l'); abrir(S.itens.filter(function(i){ return i._linha === l; })[0]); };
+  });
+}
+
+function campo(nome, tipo, valor){
+  var id = 'f_' + nome.replace(/\W/g,'_');
+  var v = esc(valor);
+  if (tipo === 'lista' || tipo === 'lista+' || tipo === 'defeito'){
+    var chave = tipo === 'defeito' ? 'DEFEITOS COMUNS' : nome;
+    var ops = (S.listas[chave] || []);
+    if (tipo === 'lista'){
+      var o = ['<option value=""></option>'].concat(ops.map(function(x){ return '<option' + (x===valor?' selected':'') + '>' + esc(x) + '</option>'; }));
+      if (valor && ops.indexOf(valor) < 0) o.push('<option selected>' + v + '</option>');
+      return '<label>' + esc(nome) + '</label><select id="' + id + '">' + o.join('') + '</select>';
+    }
+    return '<label>' + esc(nome) + '</label><input id="' + id + '" list="' + id + '_l" value="' + v + '"><datalist id="' + id + '_l">' + ops.map(function(x){ return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
+  }
+  if (tipo === 'data'){
+    var iso = /^\d{2}\/\d{2}\/\d{4}$/.test(valor||'') ? valor.split('/').reverse().join('-') : '';
+    return '<label>' + esc(nome) + '</label><input id="' + id + '" type="date" value="' + iso + '">';
+  }
+  return '<label>' + esc(nome) + '</label><input id="' + id + '" value="' + v + '"' + (nome==='SERIAL'?' autocapitalize="characters" autocorrect="off"':'') + '>';
+}
+
+function abrir(item){
+  S.atual = item || null;
+  var it = item || { 'TÉCNICO': S.tecnico, 'SITUAÇÃO': 'EM ANÁLISE', 'SERIAL': norm($('busca').value).length >= 5 ? $('busca').value.trim().toUpperCase() : '' };
+  S.sit = it['SITUAÇÃO'] || '';
+  $('tituloItem').textContent = item ? (it.SERIAL || 'Aparelho') : 'Novo aparelho';
+  var h = '';
+  if (item && it['COMBINA COM']) h += '<label>COMBINA COM (MESMO MODELO)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
+  h += '<label>SITUAÇÃO</label><div class="sits" id="sits">' + situacoes().map(function(s){ return '<button class="chip' + (s===S.sit?' on':'') + '" data-s="' + esc(s) + '">' + esc(s.charAt(0) + s.slice(1).toLowerCase()) + '</button>'; }).join('') + '</div>';
+  h += '<div class="grade">';
+  CAMPOS.forEach(function(c, k){
+    var html = campo(c[0], c[1], it[c[0]]);
+    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO' || c[0]==='DEFEITO' || c[0]==='PEÇAS COM DEFEITO' || c[0]==='LINK PEÇA') ? '</div>' + html + '<div class="grade">' : '<div>' + html + '</div>';
+  });
+  h += '</div>';
+  if (item && it['O QUE FOI FEITO / NOTAS']) h += '<label>O QUE JÁ FOI FEITO</label><div class="notas">' + esc(it['O QUE FOI FEITO / NOTAS']) + '</div>';
+  h += '<label>' + (item ? 'ACRESCENTAR AO QUE FOI FEITO' : 'O QUE FOI FEITO / NOTAS') + '</label><textarea id="f_nota" placeholder="Ex.: troquei a tela, testei 30 min, ok"></textarea>';
+  if (item) h += '<div class="rodape">Entrada ' + esc(it['DATA ENTRADA']||'—') + ' · atualizado ' + esc(it['ÚLTIMA ATUALIZAÇÃO']||'—') + '</div>';
+  $('form').innerHTML = h;
+  Array.prototype.forEach.call($('sits').children, function(b){ b.onclick = function(){ S.sit = b.getAttribute('data-s'); Array.prototype.forEach.call($('sits').children, function(x){ x.classList.toggle('on', x===b); }); }; });
+  $('pItem').classList.add('on');
+  $('pItem').scrollTop = 0;
+}
+
+function salvar(){
+  var item = S.atual ? { _linha: S.atual._linha, _serial: S.atual.SERIAL } : {};
+  CAMPOS.forEach(function(c){
+    var el = $('f_' + c[0].replace(/\W/g,'_')); if (!el) return;
+    var v = el.value.trim();
+    if (c[1] === 'data' && v) v = v.split('-').reverse().join('/');
+    if (c[0] === 'SERIAL') v = v.toUpperCase();
+    item[c[0]] = v;
+  });
+  item['SITUAÇÃO'] = S.sit;
+  var nota = $('f_nota').value.trim();
+  if (nota){
+    var hoje = new Date().toLocaleDateString('pt-BR');
+    var linha = hoje + (S.tecnico ? ' (' + S.tecnico + ')' : '') + ': ' + nota;
+    var antes = S.atual ? String(S.atual['O QUE FOI FEITO / NOTAS'] || '') : '';
+    item['O QUE FOI FEITO / NOTAS'] = antes ? antes + '\n' + linha : linha;
+  }
+  if (!S.atual && !item.SERIAL && !item.MODELO) { aviso('Preencha pelo menos o serial ou o modelo.'); return; }
+  $('salvar').disabled = true;
+  chamar('apiSalvar', [item, S.tecnico], function(r){
+    $('salvar').disabled = false;
+    if (!r.ok){
+      if (r.existe){ aviso(r.erro + ' Abrindo ele.'); abrir(r.existe); return; }
+      aviso(r.erro); return;
+    }
+    $('pItem').classList.remove('on');
+    aviso(r.nada ? 'Nada mudou.' : 'Salvo.');
+    $('busca').value = '';
+    carregar();
+  }, function(){ $('salvar').disabled = false; });
+}
+
+function pedirNome(){
+  var nomes = S.listas['TÉCNICO'] || [];
+  $('nomes').innerHTML = nomes.map(function(n){ return '<button class="chip' + (n===S.tecnico?' on':'') + '">' + esc(n) + '</button>'; }).join('');
+  Array.prototype.forEach.call($('nomes').children, function(b){ b.onclick = function(){ definirNome(b.textContent); }; });
+  $('pQuem').classList.add('on');
+}
+function definirNome(n){
+  n = String(n||'').trim().toUpperCase(); if (!n) return;
+  S.tecnico = n; guardar('tecnico', n); $('pQuem').classList.remove('on'); carregar();
+}
+
+// Leitor de código de barras (Android/Chrome; no iPhone o botão não aparece).
+var leitor = null, fluxo = null;
+if ('BarcodeDetector' in window) {
+  $('ler').style.display = '';
+  $('ler').onclick = function(){
+    if (fluxo) { parar(); return; }
+    leitor = leitor || new BarcodeDetector();
+    navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } }).then(function(s){
+      fluxo = s; var v = $('cam'); v.srcObject = s; v.style.display = 'block'; v.play(); $('ler').textContent = 'Parar';
+      (function procurar(){
+        if (!fluxo) return;
+        leitor.detect(v).then(function(c){
+          if (c.length){ $('busca').value = c[0].rawValue; parar(); desenhar(); return; }
+          setTimeout(procurar, 250);
+        }).catch(function(){ setTimeout(procurar, 500); });
+      })();
+    }).catch(function(){ aviso('Não deu para abrir a câmera.'); });
+  };
+}
+function parar(){ if (fluxo) fluxo.getTracks().forEach(function(t){ t.stop(); }); fluxo = null; $('cam').style.display = 'none'; $('ler').textContent = 'Ler'; }
+
+$('busca').oninput = desenhar;
+$('novo').onclick = function(){ abrir(null); };
+$('fechar').onclick = function(){ $('pItem').classList.remove('on'); };
+$('salvar').onclick = salvar;
+$('salvarNome').onclick = function(){ definirNome($('outroNome').value); };
+$('rodape').innerHTML = '<button id="conferir">Conferir agora com o controle de qualidade</button>';
+$('conferir').onclick = function(){
+  aviso('Conferindo…');
+  chamar('apiSincronizar', [], function(r){ aviso(r.finalizados ? r.finalizados + ' aparelho(s) finalizado(s).' : 'Nenhum aparelho novo finalizado.'); carregar(); });
+};
+
+S.tecnico = ler('tecnico');
+carregar(function(){ if (!S.tecnico) pedirNome(); });
+</script>
+</body>
+</html>

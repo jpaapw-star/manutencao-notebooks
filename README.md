@@ -1,1 +1,19 @@
-# manutencao-notebooks
+# Manutenção de notebooks
+
+App da Web (Google Apps Script) para os técnicos acompanharem os aparelhos em manutenção, em cima da planilha **MANUTENÇÃO NOTEBOOKS (NOVA)**.
+
+- Só o dono edita a planilha. Os técnicos usam o app (que grava em nome do dono) e podem só **ver** a planilha.
+- Tudo fica na aba **APARELHOS**. As abas GARANTIA, PEÇAS, SUCATA e FINALIZADOS se montam sozinhas, e o RESUMO conta por situação.
+- **Peças com defeito**: o app tira da descrição do teste (sem IA). Ex.: "tela não dá imagem e webcam não funciona" → TELA, WEBCAM. Dá para corrigir à mão.
+- **Combina com**: aparelhos do mesmo modelo que se completam (um tem boa a peça que falta no outro). Aparece na coluna COMBINA COM e no filtro "⇄ Combinam" do app.
+- **Controle de qualidade**: a cada 2 horas o app confere a planilha CONTROLE DE QUALIDADE INFORMATICA EMANX (só leitura). Serial aprovado lá vira **FINALIZADO** aqui, mesmo se o técnico esqueceu.
+- **Anotações do João Pedro**: o Claude do outro projeto escreve em `notas/<SERIAL>.md`; a cada push o GitHub manda para o app. Só esses notebooks passam por IA.
+- Toda mudança feita pelo app fica na aba **HISTÓRICO** (quem, quando, antes e depois).
+
+Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
+
+| Arquivo | Para que serve |
+| --- | --- |
+| `src/Codigo.gs` | IDs das planilhas (no topo), leitura e gravação, peças, combinações, controle de qualidade, anotações |
+| `src/Index.html` | Tela do app |
+| `scripts/enviar-notas.js` | Manda `notas/` para o app (usado pelo GitHub) |
