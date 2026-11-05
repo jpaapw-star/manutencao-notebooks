@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  :root { --fundo:#fff; --cartao:#f2f2f2; --linha:#e3e3e3; --texto:#000; --fraco:#6e6e6e; --botao:#000; --botaoTexto:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fundo:#000; --cartao:#161616; --linha:#2a2a2a; --texto:#fff; --fraco:#9a9a9a; --botao:#fff; --botaoTexto:#000; }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--fundo); color:var(--texto); font:16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
+  .tela { max-width:720px; margin:0 auto; padding:16px 16px 96px; }
+  h1 { font-size:30px; font-weight:700; letter-spacing:-.5px; margin:8px 0 4px; }
+  .sub { color:var(--fraco); font-size:14px; margin-bottom:16px; }
+  .sub a { color:var(--fraco); }
+  input, select, textarea { width:100%; font:inherit; color:var(--texto); background:var(--cartao); border:1px solid transparent; border-radius:12px; padding:12px 14px; outline:none; }
+  input:focus, select:focus, textarea:focus { border-color:var(--fraco); }
+  textarea { min-height:90px; resize:vertical; }
+  label { display:block; font-size:13px; color:var(--fraco); margin:14px 0 6px; }
+  .busca { display:flex; gap:8px; }
+  .busca input { flex:1; }
+  .chips { display:flex; gap:8px; overflow-x:auto; padding:14px 0 6px; scrollbar-width:none; }
+  .chip { flex:none; border:1px solid var(--linha); background:none; color:var(--texto); border-radius:999px; padding:7px 13px; font:inherit; font-size:14px; }
+  .chip.on { background:var(--botao); color:var(--botaoTexto); border-color:var(--botao); }
+  .lista { margin-top:8px; }
+  .item { display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid var(--linha); color:inherit; font:inherit; padding:14px 2px; }
+  .item b { font-weight:600; }
+  .item .l2 { color:var(--fraco); font-size:14px; margin-top:2px; }
+  .vazio { color:var(--fraco); text-align:center; padding:40px 0; }
+  .btn { border:0; border-radius:12px; padding:13px 18px; font:inherit; font-weight:600; background:var(--botao); color:var(--botaoTexto); }
+  .btn.sec { background:var(--cartao); color:var(--texto); }
+  .btn:disabled { opacity:.5; }
+  .flutua { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(20px + env(safe-area-inset-bottom)); box-shadow:0 6px 24px rgba(0,0,0,.25); }
+  .painel { position:fixed; inset:0; background:var(--fundo); overflow-y:auto; display:none; z-index:5; }
+  .painel.on { display:block; }
+  .topo { display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--fundo); padding:12px 16px; border-bottom:1px solid var(--linha); z-index:2; }
+  .topo button { background:none; border:0; color:var(--texto); font:inherit; font-size:17px; padding:4px; }
+  .topo .ok { font-weight:700; }
+  .grade { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+  .sits { display:flex; flex-wrap:wrap; gap:8px; }
+  .notas.combina { color:var(--texto); border:1px solid var(--fraco); }
+  .notas { white-space:pre-wrap; color:var(--fraco); font-size:14px; background:var(--cartao); border-radius:12px; padding:12px 14px; }
+  .aviso { position:fixed; left:16px; right:16px; bottom:calc(84px + env(safe-area-inset-bottom)); max-width:520px; margin:0 auto; background:var(--botao); color:var(--botaoTexto); border-radius:12px; padding:12px 16px; display:none; z-index:9; text-align:center; }
+  .aviso.on { display:block; }
+  .rodape { color:var(--fraco); font-size:13px; margin-top:24px; text-align:center; }
+  .rodape button { background:none; border:0; color:var(--fraco); text-decoration:underline; font:inherit; }
+</style>
+</head>
+<body>
+<div class="tela">
+  <h1>Manutenção</h1>
+  <div class="sub" id="sub">Carregando…</div>
+  <div class="busca">
+    <input id="busca" type="search" placeholder="Serial, modelo ou defeito" autocomplete="off">
+    <button class="btn sec" id="ler" style="display:none">Foto</button>
+  </div>
+    <div class="chips" id="chips"></div>
+  <div class="lista" id="lista"></div>
+  <div class="rodape" id="rodape"></div>
+</div>
+<button class="btn flutua" id="novo">Novo aparelho</button>
+
+<div class="painel" id="pQuem">
+  <div class="tela">
+    <h1>Quem é você?</h1>
+    <div class="sub">Fica salvo neste aparelho.</div>
+    <div class="sits" id="nomes"></div>
+    <label>Outro nome</label>
+    <input id="outroNome" placeholder="Seu nome">
+    <p><button class="btn" id="salvarNome">Continuar</button></p>
+  </div>
+</div>
+
+<div class="painel" id="pItem">
+  <div class="topo"><button id="fechar">Cancelar</button><b id="tituloItem">Aparelho</b><button class="ok" id="salvar">Salvar</button></div>
+  <div class="tela" id="form"></div>
+</div>
+
+<div class="aviso" id="aviso"></div>
+
+<script>
+var S = { listas:{}, itens:[], filtro:'ABERTOS', tecnico:'', atual:null };
+var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
+var CAMPOS = [
+  ['SERIAL','text'], ['TIPO','lista'], ['MARCA','lista+'], ['MODELO','text'], ['NF','text'], ['DESCRIÇÃO','text'], ['EAN','text'],
+  ['GARANTIA','lista'], ['DEFEITO','defeito'], ['PEÇAS COM DEFEITO','text'], ['TÉCNICO','lista+'], ['LOCAL','lista'], ['PEÇAS','text'], ['VALOR PEÇAS','text'],
+  ['LINK PEÇA','text']
+];
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function guardar(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+function ler(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } }
+function aviso(t){ var a=$('aviso'); a.textContent=t; a.classList.add('on'); clearTimeout(aviso.t); aviso.t=setTimeout(function(){ a.classList.remove('on'); }, 3500); }
+function norm(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/O/g,'0'); }
+function sem(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase(); }
+function chamar(fn, args, ok, erro){
+  var r = google.script.run.withSuccessHandler(ok).withFailureHandler(function(e){ (erro||function(){})(e); aviso('Erro: ' + (e && e.message || e)); });
+  r[fn].apply(r, args || []);
+}
+
+function carregar(depois){
+  chamar('apiInicio', [], function(d){
+    S.listas = d.listas || {}; S.itens = d.itens || []; S.ia = !!d.ia;
+    $('sub').innerHTML = (S.tecnico ? esc(S.tecnico) + ' · <a href="#" id="trocar">trocar</a> · ' : '') + '<a href="' + esc(d.planilha) + '" target="_blank">abrir planilha</a>';
+    var t = $('trocar'); if (t) t.onclick = function(e){ e.preventDefault(); pedirNome(); };
+    desenhar();
+    if (depois) depois();
+  });
+}
+
+function situacoes(){ return (S.listas['SITUAÇÃO'] || []).concat(ENCERRADAS.filter(function(s){ return (S.listas['SITUAÇÃO']||[]).indexOf(s) < 0; })); }
+
+function desenhar(){
+  var abertos = S.itens.filter(function(i){ return ENCERRADAS.indexOf(String(i['SITUAÇÃO']).toUpperCase()) < 0; });
+  var cont = {}; S.itens.forEach(function(i){ var s = String(i['SITUAÇÃO']||'').toUpperCase(); cont[s] = (cont[s]||0) + 1; });
+  var chips = [['ABERTOS', 'Em aberto · ' + abertos.length]];
+  var comb = abertos.filter(function(i){ return i['COMBINA COM']; }).length;
+  if (comb) chips.push(['COMBINA', '⇄ Combinam · ' + comb]);
+  if (S.tecnico) chips.push(['MEUS', 'Comigo · ' + abertos.filter(function(i){ return sem(i['TÉCNICO']) === sem(S.tecnico); }).length]);
+  situacoes().forEach(function(s){ if (cont[s]) chips.push([s, s.charAt(0) + s.slice(1).toLowerCase() + ' · ' + cont[s]]); });
+  $('chips').innerHTML = chips.map(function(c){ return '<button class="chip' + (S.filtro===c[0]?' on':'') + '" data-f="' + esc(c[0]) + '">' + esc(c[1]) + '</button>'; }).join('');
+  Array.prototype.forEach.call($('chips').children, function(b){ b.onclick = function(){ S.filtro = b.getAttribute('data-f'); desenhar(); }; });
+  var q = sem($('busca').value).trim(), qn = norm($('busca').value);
+  var lista = (q ? S.itens : S.itens.filter(function(i){
+    var s = String(i['SITUAÇÃO']||'').toUpperCase();
+    if (S.filtro === 'ABERTOS') return ENCERRADAS.indexOf(s) < 0;
+    if (S.filtro === 'COMBINA') return ENCERRADAS.indexOf(s) < 0 && i['COMBINA COM'];
+    if (S.filtro === 'MEUS') return ENCERRADAS.indexOf(s) < 0 && sem(i['TÉCNICO']) === sem(S.tecnico);
+    return s === S.filtro;
+  })).filter(function(i){
+    if (!q) return true;
+    return (qn.length >= 3 && norm(i.SERIAL).indexOf(qn) >= 0) || sem([i.MODELO, i['DESCRIÇÃO'], i.DEFEITO, i.MARCA, i['TÉCNICO']].join(' ')).indexOf(q) >= 0;
+  }).slice().reverse();
+  $('lista').innerHTML = lista.length ? lista.map(function(i){
+    var t = [i.MARCA, i.MODELO].filter(Boolean).join(' ') || i['DESCRIÇÃO'] || i.TIPO || 'Aparelho';
+    var l2 = [i['SITUAÇÃO'], i['PEÇAS COM DEFEITO'] || i.DEFEITO, i['TÉCNICO']].filter(Boolean).join(' · ');
+    if (i['COMBINA COM']) l2 += ' · ⇄ combina com ' + String(i['COMBINA COM']).split('\n').length;
+    return '<button class="item" data-l="' + i._linha + '"><b>' + esc(t) + '</b> <span style="color:var(--fraco)">' + esc(i.SERIAL||'') + '</span><div class="l2">' + esc(l2) + '</div></button>';
+  }).join('') : '<div class="vazio">' + (q ? 'Nada encontrado. Toque em "Novo aparelho" para cadastrar.' : 'Nenhum aparelho aqui.') + '</div>';
+  Array.prototype.forEach.call($('lista').querySelectorAll('.item'), function(b){
+    b.onclick = function(){ var l = +b.getAttribute('data-l'); abrir(S.itens.filter(function(i){ return i._linha === l; })[0]); };
+  });
+}
+
+function campo(nome, tipo, valor){
+  var id = 'f_' + nome.replace(/\W/g,'_');
+  var v = esc(valor);
+  if (tipo === 'lista' || tipo === 'lista+' || tipo === 'defeito'){
+    var chave = tipo === 'defeito' ? 'DEFEITOS COMUNS' : nome;
+    var ops = (S.listas[chave] || []);
+    if (tipo === 'lista'){
+      var o = ['<option value=""></option>'].concat(ops.map(function(x){ return '<option' + (x===valor?' selected':'') + '>' + esc(x) + '</option>'; }));
+      if (valor && ops.indexOf(valor) < 0) o.push('<option selected>' + v + '</option>');
+      return '<label>' + esc(nome) + '</label><select id="' + id + '">' + o.join('') + '</select>';
+    }
+    return '<label>' + esc(nome) + '</label><input id="' + id + '" list="' + id + '_l" value="' + v + '"><datalist id="' + id + '_l">' + ops.map(function(x){ return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
+  }
+  if (tipo === 'data'){
+    var iso = /^\d{2}\/\d{2}\/\d{4}$/.test(valor||'') ? valor.split('/').reverse().join('-') : '';
+    return '<label>' + esc(nome) + '</label><input id="' + id + '" type="date" value="' + iso + '">';
+  }
+  return '<label>' + esc(nome) + '</label><input id="' + id + '" value="' + v + '"' + (nome==='SERIAL'?' autocapitalize="characters" autocorrect="off"':'') + '>';
+}
+
+function abrir(item){
+  S.atual = item || null;
+  var it = item || { 'TÉCNICO': S.tecnico, 'SITUAÇÃO': 'EM ANÁLISE', 'SERIAL': norm($('busca').value).length >= 5 ? $('busca').value.trim().toUpperCase() : '' };
+  S.sit = it['SITUAÇÃO'] || '';
+  $('tituloItem').textContent = item ? (it.SERIAL || 'Aparelho') : 'Novo aparelho';
+  var h = '';
+  if (item && it['COMBINA COM']) h += '<label>COMBINA COM (MESMO MODELO)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
+  h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p>';
+  h += '<label>SITUAÇÃO</label><div class="sits" id="sits">' + situacoes().map(function(s){ return '<button class="chip' + (s===S.sit?' on':'') + '" data-s="' + esc(s) + '">' + esc(s.charAt(0) + s.slice(1).toLowerCase()) + '</button>'; }).join('') + '</div>';
+  h += '<div class="grade">';
+  CAMPOS.forEach(function(c, k){
+    var html = campo(c[0], c[1], it[c[0]]);
+    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO' || c[0]==='DEFEITO' || c[0]==='PEÇAS COM DEFEITO' || c[0]==='LINK PEÇA') ? '</div>' + html + '<div class="grade">' : '<div>' + html + '</div>';
+  });
+  h += '</div>';
+  if (item && it['O QUE FOI FEITO / NOTAS']) h += '<label>O QUE JÁ FOI FEITO</label><div class="notas">' + esc(it['O QUE FOI FEITO / NOTAS']) + '</div>';
+  h += '<label>' + (item ? 'ACRESCENTAR AO QUE FOI FEITO' : 'O QUE FOI FEITO / NOTAS') + '</label><textarea id="f_nota" placeholder="Ex.: troquei a tela, testei 30 min, ok"></textarea>';
+  if (item) h += '<div class="rodape">Entrada ' + esc(it['DATA ENTRADA']||'—') + ' · atualizado ' + esc(it['ÚLTIMA ATUALIZAÇÃO']||'—') + '</div>';
+  $('form').innerHTML = h;
+  $('fotoEtiqueta').onclick = function(){ escolherFoto(preencherDaEtiqueta); };
+  // Defeitos comuns: um toque acrescenta no campo (dá para ditar pelo microfone do teclado também).
+  var fd = $('f_DEFEITO');
+  if (fd) {
+    var box = document.createElement('div'); box.className = 'sits'; box.style.marginTop = '8px';
+    (S.listas['DEFEITOS COMUNS'] || []).slice(0, 14).forEach(function(d){
+      var b = document.createElement('button'); b.className = 'chip'; b.type = 'button'; b.textContent = d.charAt(0) + d.slice(1).toLowerCase();
+      b.onclick = function(){ var v = fd.value.trim(); if (sem(v).indexOf(sem(d)) < 0) fd.value = v ? v + ', ' + d : d; };
+      box.appendChild(b);
+    });
+    fd.parentNode.insertBefore(box, fd.nextSibling.nextSibling);
+    fd.placeholder = 'Toque abaixo ou dite pelo microfone';
+  }
+  Array.prototype.forEach.call($('sits').children, function(b){ b.onclick = function(){ S.sit = b.getAttribute('data-s'); Array.prototype.forEach.call($('sits').children, function(x){ x.classList.toggle('on', x===b); }); }; });
+  $('pItem').classList.add('on');
+  $('pItem').scrollTop = 0;
+}
+
+function salvar(){
+  var item = S.atual ? { _linha: S.atual._linha, _serial: S.atual.SERIAL } : {};
+  CAMPOS.forEach(function(c){
+    var el = $('f_' + c[0].replace(/\W/g,'_')); if (!el) return;
+    var v = el.value.trim();
+    if (c[1] === 'data' && v) v = v.split('-').reverse().join('/');
+    if (c[0] === 'SERIAL') v = v.toUpperCase();
+    item[c[0]] = v;
+  });
+  item['SITUAÇÃO'] = S.sit;
+  var nota = $('f_nota').value.trim();
+  if (nota){
+    var hoje = new Date().toLocaleDateString('pt-BR');
+    var linha = hoje + (S.tecnico ? ' (' + S.tecnico + ')' : '') + ': ' + nota;
+    var antes = S.atual ? String(S.atual['O QUE FOI FEITO / NOTAS'] || '') : '';
+    item['O QUE FOI FEITO / NOTAS'] = antes ? antes + '\n' + linha : linha;
+  }
+  if (!S.atual && !item.SERIAL && !item.MODELO) { aviso('Preencha pelo menos o serial ou o modelo.'); return; }
+  $('salvar').disabled = true;
+  chamar('apiSalvar', [item, S.tecnico], function(r){
+    $('salvar').disabled = false;
+    if (!r.ok){
+      if (r.existe){ aviso(r.erro + ' Abrindo ele.'); abrir(r.existe); return; }
+      aviso(r.erro); return;
+    }
+    $('pItem').classList.remove('on');
+    aviso(r.nada ? 'Nada mudou.' : 'Salvo.');
+    $('busca').value = '';
+    carregar();
+  }, function(){ $('salvar').disabled = false; });
+}
+
+function pedirNome(){
+  var nomes = S.listas['TÉCNICO'] || [];
+  $('nomes').innerHTML = nomes.map(function(n){ return '<button class="chip' + (n===S.tecnico?' on':'') + '">' + esc(n) + '</button>'; }).join('');
+  Array.prototype.forEach.call($('nomes').children, function(b){ b.onclick = function(){ definirNome(b.textContent); }; });
+  $('pQuem').classList.add('on');
+}
+function definirNome(n){
+  n = String(n||'').trim().toUpperCase(); if (!n) return;
+  S.tecnico = n; guardar('tecnico', n); $('pQuem').classList.remove('on'); carregar();
+}
+
+// ===== Leitura de etiqueta por foto (mesma ideia do SCAN, sem IA) =====
+// Lê os códigos de barras da foto no próprio celular: leitor nativo (Android) ou ZXing (iPhone/PC).
+var ZXING_URL = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+var NATIVOS = ['ean_13', 'ean_8', 'upc_a', 'code_128', 'code_39', 'itf', 'qr_code', 'data_matrix'];
+var zx = null;
+function carregarZXing(){
+  if (window.ZXing) return Promise.resolve(window.ZXing);
+  if (!zx) zx = new Promise(function(ok, falha){ var sc = document.createElement('script'); sc.src = ZXING_URL; sc.onload = function(){ ok(window.ZXing); }; sc.onerror = function(){ zx = null; falha(new Error('zxing')); }; document.head.appendChild(sc); });
+  return zx;
+}
+function ehEan(v, f){ return /^(EAN|UPC)/i.test(f || '') || (/^\d{8}$|^\d{12,14}$/.test(String(v || '')) && digitoOk(String(v))); }
+function digitoOk(v){ var d = v.split('').map(Number), c = d.pop(), s = 0; d.reverse().forEach(function(x, i){ s += x * (i % 2 ? 1 : 3); }); return (10 - s % 10) % 10 === c; }
+function pareceSerial(v){ var x = String(v || '').toUpperCase(); return /[A-Z]/.test(x) && /\d/.test(x) && x.length >= 6 && x.length <= 30 && !/^HTTP/.test(x); }
+// Marca pelo jeito do serial (Acer NX/NH…, ASUS …N0B…, Lenovo PE/PF/MP/R9 com 8, Dell 7).
+function marcaPeloSerial(v){
+  var x = String(v || '').toUpperCase();
+  if (/^N[XH][A-Z0-9]{18,22}$/.test(x)) return 'ACER';
+  if (/^[A-Z0-9]{3}0B\d{9}[A-Z0-9]?$/.test(x.replace(/O/g, '0'))) return 'ASUS';
+  if (/^(PE|PF|MP|R9|YX|PW)[A-Z0-9]{6}$/.test(x)) return 'LENOVO';
+  if (/^[A-Z0-9]{7}$/.test(x) && /[A-Z]/.test(x) && /\d/.test(x)) return 'DELL';
+  return '';
+}
+function fotoParaCanvas(arquivo){
+  return new Promise(function(ok, falha){
+    var img = new Image(), url = URL.createObjectURL(arquivo);
+    img.onload = function(){
+      var max = 2000, k = Math.min(1, max / Math.max(img.width, img.height));
+      var c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); ok(c);
+    };
+    img.onerror = function(){ falha(new Error('foto')); };
+    img.src = url;
+  });
+}
+function recorte(c, x, y, l, a){ var r = document.createElement('canvas'); r.width = Math.max(1, Math.round(c.width * l)); r.height = Math.max(1, Math.round(c.height * a)); r.getContext('2d').drawImage(c, c.width * x, c.height * y, r.width, r.height, 0, 0, r.width, r.height); return r; }
+function girar(c){ var r = document.createElement('canvas'); r.width = c.height; r.height = c.width; var g = r.getContext('2d'); g.translate(r.width, 0); g.rotate(Math.PI / 2); g.drawImage(c, 0, 0); return r; }
+function lerCodigos(canvas){
+  var achados = {};
+  function anotar(v, f){ v = String(v || '').trim(); if (v && !achados[v]) achados[v] = String(f || '').toUpperCase(); }
+  function lista(){ return Object.keys(achados).map(function(v){ return { valor: v, formato: achados[v] }; }); }
+  function completo(){ var l = lista(); return l.some(function(c){ return ehEan(c.valor, c.formato); }) && l.some(function(c){ return !ehEan(c.valor, c.formato) && pareceSerial(c.valor); }); }
+  var nativo = Promise.resolve();
+  if ('BarcodeDetector' in window) {
+    nativo = BarcodeDetector.getSupportedFormats().then(function(fs){
+      var usar = fs.filter(function(f){ return NATIVOS.indexOf(f) >= 0; });
+      if (!usar.length) return;
+      return new BarcodeDetector({ formats: usar }).detect(canvas).then(function(r){ r.forEach(function(b){ anotar(b.rawValue, b.format); }); });
+    }).catch(function(){});
+  }
+  return nativo.then(function(){
+    if (completo()) return lista();
+    return carregarZXing().then(function(Z){
+      var dicas = new Map();
+      dicas.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.CODE_128, Z.BarcodeFormat.CODE_39, Z.BarcodeFormat.ITF, Z.BarcodeFormat.QR_CODE, Z.BarcodeFormat.DATA_MATRIX]);
+      dicas.set(Z.DecodeHintType.TRY_HARDER, true);
+      var leitor = new Z.MultiFormatReader(); leitor.setHints(dicas);
+      // Foto inteira, metades, terços e depois girada (códigos em pé). Cada região acha um código.
+      var regs = [[0,0,1,1],[0,0,1,.5],[0,.5,1,.5],[0,0,1,.34],[0,.33,1,.34],[0,.66,1,.34],[0,0,.5,1],[.5,0,.5,1]];
+      var passos = regs.map(function(r){ return [false, r]; }).concat([[true,[0,0,1,1]],[true,[0,0,1,.5]],[true,[0,.5,1,.5]]]);
+      var i = 0, girada = null, inicio = Date.now();
+      function proxima(){
+        if (i >= passos.length || completo() || Date.now() - inicio > 6000) return Promise.resolve(lista());
+        var p = passos[i++];
+        try {
+          var base = p[0] ? (girada || (girada = girar(canvas))) : canvas;
+          var c = p[1][2] === 1 && p[1][3] === 1 ? base : recorte(base, p[1][0], p[1][1], p[1][2], p[1][3]);
+          var res = leitor.decode(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(c))));
+          anotar(res.getText(), Z.BarcodeFormat[res.getBarcodeFormat()]);
+        } catch (e) {}
+        try { leitor.reset(); } catch (e) {}
+        return new Promise(function(ok){ setTimeout(ok, 0); }).then(proxima);
+      }
+      return proxima();
+    }).catch(function(){ return lista(); });
+  });
+}
+/** Foto → { ean, serial }. */
+function lerEtiqueta(arquivo){
+  var tela = null;
+  return fotoParaCanvas(arquivo).then(function(c){ tela = c; return lerCodigos(c); }).then(function(l){
+    var ean = l.filter(function(c){ return ehEan(c.valor, c.formato); }).map(function(c){ return c.valor.replace(/^0(\d{13})$/, '$1'); })[0] || '';
+    var seriais = l.filter(function(c){ return !ehEan(c.valor, c.formato) && pareceSerial(c.valor); }).map(function(c){ return c.valor.toUpperCase(); });
+    // Prefere o que parece serial de notebook conhecido; senão o mais comprido.
+    seriais.sort(function(a, b){ return (marcaPeloSerial(b) ? 1 : 0) - (marcaPeloSerial(a) ? 1 : 0) || b.length - a.length; });
+    return { ean: ean, serial: seriais[0] || '', outros: seriais.slice(1), codigos: l.length, canvas: tela };
+  });
+}
+function escolherFoto(depois){
+  var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.setAttribute('capture', 'environment');
+  inp.onchange = function(){ if (inp.files && inp.files[0]) { aviso('Lendo a etiqueta…'); lerEtiqueta(inp.files[0]).then(depois).catch(function(){ aviso('Não consegui ler a foto.'); }); } };
+  inp.click();
+}
+function valorCampo(nome){ var el = $('f_' + nome.replace(/\W/g, '_')); return el ? el.value.trim() : ''; }
+function porCampo(nome, v, sobrescrever){ var el = $('f_' + nome.replace(/\W/g, '_')); if (el && v && (sobrescrever || !el.value.trim())) el.value = v; }
+/** Preenche o formulário com o que a foto leu e com o que a planilha já sabe desse EAN. */
+function preencherDaEtiqueta(r){
+  if (!r.ean && !r.serial && !(S.ia && r.canvas)) { aviso('Nenhum código encontrado. Tente mais perto e com luz.'); return; }
+  if (r.serial) porCampo('SERIAL', r.serial, true);
+  if (r.ean) porCampo('EAN', r.ean, true);
+  porCampo('MARCA', marcaPeloSerial(r.serial));
+  if (r.serial || r.ean) aviso('Lido: ' + [r.serial, r.ean].filter(Boolean).join(' · '));
+  if (r.serial) {
+    var ja = S.itens.filter(function(i){ return norm(i.SERIAL) === norm(r.serial); })[0];
+    if (ja && !S.atual) { aviso('Esse serial já está na lista. Abrindo ele.'); abrir(ja); return; }
+  }
+  var preencher = function(d){
+    if (!d) return;
+    ['TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO', 'SERIAL', 'EAN'].forEach(function(k){ porCampo(k, d[k]); });
+    var sel = $('f_TIPO'); if (sel && d.TIPO && !sel.value) { var o = document.createElement('option'); o.text = d.TIPO; o.selected = true; sel.add(o); }
+  };
+  // IA do SCAN só quando o código de barras não resolveu (sem serial ou modelo desconhecido).
+  var ia = function(){
+    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO'))) return;
+    var c = r.canvas, k = Math.min(1, 1280 / Math.max(c.width, c.height)), z = document.createElement('canvas');
+    z.width = Math.round(c.width * k); z.height = Math.round(c.height * k); z.getContext('2d').drawImage(c, 0, 0, z.width, z.height);
+    aviso('Lendo o texto da etiqueta com IA…');
+    chamar('apiLerComIA', [z.toDataURL('image/jpeg', 0.8), { serial: valorCampo('SERIAL'), ean: valorCampo('EAN') }], function(d){
+      if (!d || d.erro) { aviso(d && d.erro || 'A IA não leu.'); return; }
+      var tinhaSerial = valorCampo('SERIAL');
+      preencher(d);
+      if (!tinhaSerial && d.SERIAL) {
+        var ja2 = S.itens.filter(function(i){ return norm(i.SERIAL) === norm(d.SERIAL); })[0];
+        if (ja2 && !S.atual) { aviso('Esse serial já está na lista. Abrindo ele.'); abrir(ja2); return; }
+        porCampo('MARCA', marcaPeloSerial(d.SERIAL));
+      }
+      aviso('IA leu: ' + [d.SERIAL, d.MODELO].filter(Boolean).join(' · '));
+    });
+  };
+  if (r.ean) chamar('apiPorEan', [r.ean], function(d){ preencher(d); ia(); }, ia);
+  else ia();
+}
+$('ler').style.display = '';
+$('ler').textContent = 'Foto';
+$('ler').title = 'Foto da etiqueta';
+$('ler').onclick = function(){
+  escolherFoto(function(r){
+    if (!r.serial && !r.ean && !S.ia) { aviso('Nenhum código encontrado. Tente mais perto e com luz.'); return; }
+    var ja = r.serial && S.itens.filter(function(i){ return norm(i.SERIAL) === norm(r.serial); })[0];
+    if (ja) { abrir(ja); return; }
+    abrir(null); preencherDaEtiqueta(r);
+  });
+};
+
+$('busca').oninput = desenhar;
+$('novo').onclick = function(){ abrir(null); };
+$('fechar').onclick = function(){ $('pItem').classList.remove('on'); };
+$('salvar').onclick = salvar;
+$('salvarNome').onclick = function(){ definirNome($('outroNome').value); };
+$('rodape').innerHTML = '<button id="conferir">Conferir agora com o controle de qualidade</button>';
+$('conferir').onclick = function(){
+  aviso('Conferindo…');
+  chamar('apiSincronizar', [], function(r){ aviso(r.finalizados ? r.finalizados + ' aparelho(s) finalizado(s).' : 'Nenhum aparelho novo finalizado.'); carregar(); });
+};
+
+S.tecnico = ler('tecnico');
+carregar(function(){ if (!S.tecnico) pedirNome(); });
+</script>
+</body>
+</html>

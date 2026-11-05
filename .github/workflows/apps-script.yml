@@ -1,0 +1,115 @@
+# Envia src/ para o Apps Script e atualiza o app da Web sempre que a branch main muda.
+# Também manda as anotações de notas/ para o app sempre que elas mudam (em qualquer branch).
+# Configuração única: segredo CLASPRC_JSON (o mesmo dos outros apps). Opcional: GEMINI_API_KEY (a mesma do SCAN) liga a IA da etiqueta.
+name: Apps Script
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: apps-script-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
+  enviar:
+    needs: testes
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Preparar clasp
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then echo "::error::Falta o segredo CLASPRC_JSON (veja docs/INSTALACAO.md)."; exit 1; fi
+          npm install -g @google/clasp@2.4.2
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          CHAVE=$(printf 'notas:%s' "$CLASPRC_JSON" | sha256sum | cut -c1-40)
+          CHAVE="$CHAVE" node -e 'const s={notasChave:process.env.CHAVE};const g=(process.env.GEMINI_API_KEY||"").trim();if(g)s.iaChave=g;require("fs").writeFileSync("src/00_Segredos.gs","var SEGREDOS = "+JSON.stringify(s)+";\n")'
+      - name: Criar o projeto do Apps Script (só na primeira vez)
+        run: |
+          if [ ! -f .clasp.json ]; then
+            clasp create --type standalone --title "Manutenção de notebooks" --rootDir src
+            node -e 'const f=".clasp.json";const c=JSON.parse(require("fs").readFileSync(f));require("fs").writeFileSync(f,JSON.stringify({scriptId:c.scriptId,rootDir:"src"},null,2)+"\n")'
+            git checkout -- src/appsscript.json 2>/dev/null || true
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .clasp.json
+            git commit -m "Liga o repositório ao projeto do Apps Script criado"
+            git push
+          fi
+          cat .clasp.json
+      - name: Enviar código
+        run: clasp push --force
+      - name: Atualizar o app da Web
+        run: |
+          DEP=$(clasp deployments | grep -v '@HEAD' | grep -o 'AKfyc[A-Za-z0-9_-]*' | head -1 || true)
+          if [ -n "$DEP" ]; then
+            clasp deploy --deploymentId "$DEP" --description "GitHub ${GITHUB_SHA::7}"
+          else
+            clasp deploy --description "GitHub ${GITHUB_SHA::7}"
+            DEP=$(clasp deployments | grep -v '@HEAD' | grep -o 'AKfyc[A-Za-z0-9_-]*' | head -1 || true)
+          fi
+          echo "App da Web: https://script.google.com/macros/s/$DEP/exec" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Apagar credenciais
+        if: always()
+        run: rm -f ~/.clasprc.json src/00_Segredos.gs
+
+  notas:
+    needs: [testes, enviar]
+    if: always() && needs.testes.result == 'success' && (needs.enviar.result == 'success' || needs.enviar.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Ver se as anotações mudaram
+        id: mudou
+        env:
+          ANTES: ${{ github.event.before }}
+        run: |
+          # Compara com o que havia antes do push (vários commits de uma vez contam todos).
+          # Branch nova: compara com a main.
+          if echo "$ANTES" | grep -q '^0*$' || ! git cat-file -e "$ANTES" 2>/dev/null; then ANTES=$(git merge-base HEAD origin/main 2>/dev/null || echo HEAD~1); fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || git diff --name-only "$ANTES" HEAD 2>/dev/null | grep -q '^notas/'; then
+            echo "sim=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "Anotações sem mudança."
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.mudou.outputs.sim == '1'
+        with:
+          node-version: 22
+      - name: Mandar anotações para o app
+        if: steps.mudou.outputs.sim == '1'
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ] || [ ! -f .clasp.json ]; then
+            git fetch --depth 1 origin main && git checkout origin/main -- .clasp.json 2>/dev/null || true
+          fi
+          if [ -z "$CLASPRC_JSON" ] || [ ! -f .clasp.json ]; then echo "::warning::App ainda não instalado."; exit 0; fi
+          npm install -g @google/clasp@2.4.2
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          DEP=$(clasp deployments | grep -v '@HEAD' | grep -o 'AKfyc[A-Za-z0-9_-]*' | head -1 || true)
+          CHAVE=$(printf 'notas:%s' "$CLASPRC_JSON" | sha256sum | cut -c1-40)
+          rm -f ~/.clasprc.json
+          if [ -z "$DEP" ]; then echo "::warning::App da Web ainda não publicado."; exit 0; fi
+          node scripts/enviar-notas.js "https://script.google.com/macros/s/$DEP/exec" "$CHAVE"
