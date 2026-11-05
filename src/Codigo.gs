@@ -434,7 +434,7 @@ function estoqueDe(linhas) {
   return linhas.slice(1).map(function (l, k) {
     var g = function (n) { return c(n) >= 0 ? String(l[c(n)] == null ? '' : l[c(n)]).trim() : ''; };
     var peca = g('PEÇA');
-    return { linha: k + 2, peca: peca, codigo: g('CÓDIGO DA PEÇA'), tipo: tipoDaPeca(peca),
+    return { linha: k + 2, peca: peca, codigo: g('CÓDIGO DA PEÇA'), link: g('LINK'), serve: g('SERVE NOS MODELOS'), tipo: tipoDaPeca(peca),
       modelos: [g('SERVE NOS MODELOS'), g('MODELOS COMPATÍVEIS (PESQUISA)')].filter(String).join(', '),
       pesquisa: g('MODELOS COMPATÍVEIS (PESQUISA)'), usada: /USAD/.test(semAcento_(g('SITUAÇÃO'))) || !!g('USADA EM (SERIAL)') };
   }).filter(function (e) { return e.peca || e.codigo; });
@@ -634,13 +634,14 @@ function pesquisarIrmaos_(ss, limite) {
 }
 
 /** Pergunta curta à IA com busca do Google; devolve o texto, '' se respondeu NADA, null se não respondeu. */
-function pesquisarIA_(k, pergunta) {
+function pesquisarIA_(k, pergunta, ferramentas) {
+  ferramentas = ferramentas || [{ google_search: {} }];
   for (var i = 0; i < IA_MODELOS.length; i++) {
     var r;
     try {
       r = UrlFetchApp.fetch(IA_URL + IA_MODELOS[i] + ':generateContent?key=' + encodeURIComponent(k), {
         method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-        payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: pergunta }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0 } })
+        payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: pergunta }] }], tools: ferramentas, generationConfig: { temperature: 0 } })
       });
     } catch (x) { continue; }
     if (r.getResponseCode() !== 200) continue;
@@ -795,15 +796,49 @@ function pesquisarPecas_(ss, limite) {
   var pc = ss.getSheetByName(ABA_PECAS);
   if (!k || !pc) return 0;
   var col = CAB_PECAS.indexOf('MODELOS COMPATÍVEIS (PESQUISA)') + 1;
+  var colCod = CAB_PECAS.indexOf('CÓDIGO DA PEÇA') + 1;
+  var props = PropertiesService.getScriptProperties();
   var feitas = 0;
   lerEstoque_(ss).forEach(function (e) {
-    if (feitas >= limite || e.pesquisa || !e.codigo || e.usada) return;
+    if (feitas >= limite || e.usada) return;
+    // Sem código: a IA acha o código (part number) pelo nome da peça, pelo link da compra e pelos modelos.
+    if (!e.codigo && e.peca) {
+      var chave = 'cod:' + Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, e.peca + '|' + e.link + '|' + e.serve));
+      if (props.getProperty(chave)) return;
+      var cod = pesquisarCodigo_(k, e);
+      feitas++;
+      if (cod === null) return;
+      props.setProperty(chave, '1');
+      if (!cod) return;
+      pc.getRange(e.linha, colCod).setValue(cod)
+        .setNote('Código achado pela IA em ' + Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'dd/MM/yyyy') + '. Confira na etiqueta da peça; se estiver errado, é só corrigir.');
+      e.codigo = cod;
+      if (feitas >= limite) return;
+    }
+    if (e.pesquisa || !e.codigo) return;
     var r = pesquisarModelos_(k, e.peca, e.codigo);
     if (r === null) return;
     pc.getRange(e.linha, col).setValue(r || 'NÃO ACHEI');
     feitas++;
   });
   return feitas;
+}
+
+/** Código (part number) da peça comprada; '' se não achou, null se a IA não respondeu. Lê a página do link quando tem. */
+function pesquisarCodigo_(k, e) {
+  var pergunta = 'Peça de notebook comprada: "' + e.peca + '"' + (e.serve ? ', para o(s) modelo(s) ' + e.serve : '') +
+    (e.link ? '. Link da compra: ' + e.link + ' (abra a página e leia o anúncio)' : '') +
+    '. Ache o código do fabricante dessa peça (part number, ex.: NV156FHM-N48, 0B200-03940000, L15M3PB0). ' +
+    'Responda só com o código mais provável, sem texto extra. Se não achar nada confiável, responda NADA.';
+  var t = e.link ? pesquisarIA_(k, pergunta, [{ url_context: {} }, { google_search: {} }]) : null;
+  if (t === null) t = pesquisarIA_(k, pergunta);
+  return t === null ? null : codigoPeca(t);
+}
+
+/** Primeiro código de peça num texto (letras e números, 5+ caracteres, com algum número). Pura. */
+function codigoPeca(texto) {
+  var m = String(texto == null ? '' : texto).toUpperCase().match(/[A-Z0-9][A-Z0-9.\-\/]{3,}[A-Z0-9]/g) || [];
+  return m.filter(function (x) { return /\d/.test(x) && x.replace(/[^A-Z0-9]/g, '').length >= 5; })[0] || '';
 }
 
 function pesquisarModelos_(k, peca, codigo) {
@@ -1270,5 +1305,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }

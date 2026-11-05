@@ -219,3 +219,12 @@ test('compatibilidade: peça universal e modelos que compartilham peça', () => 
   // sem a tabela, tela de outro modelo não serve
   assert.strictEqual(planosDeMontagem(itens, [], compatDe(['SSD'], [])).length, 0);
 });
+
+test('código da peça: tira o part number da resposta da IA', () => {
+  const { codigoPeca } = m.exports;
+  assert.strictEqual(codigoPeca('NV156FHM-N48'), 'NV156FHM-N48');
+  assert.strictEqual(codigoPeca('O código provável é L15M3PB0.'), 'L15M3PB0');
+  assert.strictEqual(codigoPeca('0B200-03940000'), '0B200-03940000');
+  assert.strictEqual(codigoPeca('TELA LED'), '');
+  assert.strictEqual(codigoPeca(''), '');
+});
