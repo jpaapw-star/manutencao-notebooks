@@ -121,3 +121,79 @@ test('leitura da etiqueta: EAN com dígito, serial e marca pelo serial', () => {
   assert.strictEqual(f.marcaPeloSerial('PE0FLHWQ'), 'LENOVO');
   assert.strictEqual(f.marcaPeloSerial('2SG7CJ4'), 'DELL');
 });
+
+const { ehGarantia, planosDeMontagem, linhasCompativeis } = m.exports;
+
+test('garantia: coluna GARANTIA ou situação de garantia', () => {
+  assert.ok(ehGarantia({ GARANTIA: 'GARANTIA', 'SITUAÇÃO': 'EM ANÁLISE' }));
+  assert.ok(ehGarantia({ GARANTIA: 'CONFERIR GARANTIA', 'SITUAÇÃO': 'ENVIADO PARA GARANTIA' }));
+  assert.ok(ehGarantia({ GARANTIA: '', 'SITUAÇÃO': 'AGUARDANDO NF' }));
+  assert.ok(!ehGarantia({ GARANTIA: 'SEM GARANTIA', 'SITUAÇÃO': 'EM REPARO' }));
+  assert.ok(!ehGarantia({ GARANTIA: 'CONFERIR GARANTIA', 'SITUAÇÃO': 'EM ANÁLISE' }));
+});
+
+test('montagem: vários doadores fazem um notebook, cada peça usada uma vez', () => {
+  const itens = [
+    { MODELO: 'E1504F', SERIAL: 'ALVO', 'PEÇAS': 'TELA (CONFIRMADA), WEBCAM (PROVÁVEL), TECLADO (SUSPEITA)', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 2 },
+    { MODELO: 'E1504F', SERIAL: 'D1', 'PEÇAS': 'WEBCAM, TECLADO, PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', _linha: 3 },
+    { MODELO: 'E1504F', SERIAL: 'D2', 'PEÇAS': 'TELA, PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', _linha: 4 },
+    { MODELO: 'X515', SERIAL: 'OUTRO', 'PEÇAS': 'TELA', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 5 },
+    { MODELO: 'X515', SERIAL: 'FIM', 'PEÇAS': '', 'SITUAÇÃO': 'FINALIZADO', _linha: 6 }
+  ];
+  const p = planosDeMontagem(itens);
+  assert.strictEqual(p.length, 1);
+  assert.strictEqual(p[0].serial, 'ALVO');
+  const de = {};
+  p[0].recebe.forEach(r => { de[r.peca] = r.de; });
+  assert.deepStrictEqual(de, { TELA: 'D1', WEBCAM: 'D2', TECLADO: 'D2' });
+  const l = linhasCompativeis(p, itens);
+  assert.strictEqual(l.length, 3);
+  assert.deepStrictEqual(l.map(x => x.valores[1]), ['MONTAR', 'DOADOR (SUCATA)', 'DOADOR (SUCATA)']);
+  assert.ok(l.every(x => x.grupo === 0));
+  // Dois que se ajudam também viram grupo; quem já doou não é montado.
+  const par = planosDeMontagem([
+    { MODELO: 'A', SERIAL: 'P1', 'PEÇAS': 'TELA', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 2 },
+    { MODELO: 'A', SERIAL: 'P2', 'PEÇAS': 'WEBCAM', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 3 }
+  ]);
+  assert.strictEqual(par.length, 1);
+});
+
+test('cada aparelho na sua aba: sucata, garantia ou APARELHOS', () => {
+  const { abaDoItem } = m.exports;
+  assert.strictEqual(abaDoItem({ 'SITUAÇÃO': 'SUCATA', GARANTIA: 'GARANTIA' }), 'SUCATA');
+  assert.strictEqual(abaDoItem({ 'SITUAÇÃO': 'ENVIADO PARA GARANTIA', GARANTIA: '' }), 'GARANTIA');
+  assert.strictEqual(abaDoItem({ 'SITUAÇÃO': 'EM REPARO', GARANTIA: 'SEM GARANTIA' }), 'APARELHOS');
+});
+
+test('previsão: "regravei..., não resolveu" descarta; coluna sem defeito não vira peça', () => {
+  assert.strictEqual(preverPecas('TELA PRETA', ['Chip da BIOS com defeito', 'Regravei o chip da BIOS, não resolveu']).texto, 'TELA (SUSPEITA) | DESCARTADO: CHIP DA BIOS');
+  assert.deepStrictEqual(pecasDaColuna('TROCADO: CHIP DA BIOS | DESCARTADO: TELA'), []);
+  const { coresDosGrupos } = m.exports;
+  const c = coresDosGrupos([{ serial: 'A', recebe: [{ de: 'B' }, { de: 'C' }] }, { serial: 'D', recebe: [{ de: 'E' }] }]);
+  assert.strictEqual(c.A, c.B); assert.strictEqual(c.A, c.C); assert.notStrictEqual(c.A, c.D); assert.strictEqual(c.D, c.E);
+});
+
+test('peças compradas: tipo, modelos compatíveis e aparelhos que precisam', () => {
+  const { tipoDaPeca, modelosCombinam, estoqueDe, aparelhosParaPecas } = m.exports;
+  assert.strictEqual(tipoDaPeca('Tela 15.6 LED slim 30 pinos'), 'TELA');
+  assert.strictEqual(tipoDaPeca('Teclado ABNT2'), 'TECLADO');
+  assert.ok(modelosCombinam('VIVOBOOK GO 15 E1504FA', 'E1504F, X1504ZA'));
+  assert.ok(!modelosCombinam('VIVOBOOK GO 15 E1504FA', 'X515JA'));
+  const est = estoqueDe([
+    ['DATA COMPRA', 'PEÇA', 'CÓDIGO DA PEÇA', 'SERVE NOS MODELOS', 'VALOR', 'LINK', 'SITUAÇÃO', 'USADA EM (SERIAL)', 'MODELOS COMPATÍVEIS (PESQUISA)', 'APARELHOS QUE PRECISAM'],
+    ['05/11/2026', 'Tela 15.6', 'NV156FHM', '', 300, '', 'EM ESTOQUE', '', 'E1504FA, X1504ZA', ''],
+    ['05/11/2026', 'Teclado', 'K1', 'E1504F', 80, '', 'USADA', 'ABC', '', '']
+  ]);
+  assert.strictEqual(est.length, 2);
+  assert.ok(est[1].usada);
+  const itens = [
+    { SERIAL: 'A1', MODELO: 'E1504FA', 'PEÇAS': 'TELA (PROVÁVEL)', 'SITUAÇÃO': 'EM REPARO' },
+    { SERIAL: 'A2', MODELO: 'E1504FA', 'PEÇAS': 'TECLADO', 'SITUAÇÃO': 'EM REPARO' }
+  ];
+  assert.deepStrictEqual(aparelhosParaPecas(est, itens), ['A1 (E1504FA)', '']);
+  const p = planosDeMontagem(itens, est);
+  assert.strictEqual(p.length, 1);
+  assert.strictEqual(p[0].serial, 'A1');
+  assert.strictEqual(p[0].recebe[0].de, 'PEÇA COMPRADA NV156FHM');
+  assert.ok(p[0].recebe[0].comprada);
+});
