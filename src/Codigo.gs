@@ -23,9 +23,14 @@ var FINALIZADO = 'FINALIZADO';
 var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
 var COLUNAS = ['DATA ENTRADA', 'TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO', 'EAN', 'SERIAL', 'NF', 'GARANTIA', 'DEFEITO',
   'TÉCNICO', 'SITUAÇÃO', 'LOCAL', 'PEÇAS', 'VALOR PEÇAS', 'LINK PEÇA',
-  'O QUE FOI FEITO / NOTAS', 'ÚLTIMA ATUALIZAÇÃO', 'PEÇAS COM DEFEITO', 'COMBINA COM'];
+  'O QUE FOI FEITO / NOTAS', 'ÚLTIMA ATUALIZAÇÃO', 'COMBINA COM'];
 // Colunas que o app preenche sozinho (acrescentadas no fim se faltarem).
-var COLUNAS_AUTO = ['PEÇAS COM DEFEITO', 'COMBINA COM'];
+var COLUNAS_AUTO = ['COMBINA COM'];
+// Colunas que só o app escreve: PEÇAS (previsão), NOTAS (montada das observações) e COMBINA COM.
+var NOTAS = 'O QUE FOI FEITO / NOTAS';
+var COLUNAS_DO_APP = ['PEÇAS', NOTAS, 'COMBINA COM'];
+var OBS = 'OBSERVAÇÕES';
+var VERSAO_PLANILHA = '4';
 var DATAS = ['DATA ENTRADA', 'ÚLTIMA ATUALIZAÇÃO'];
 var VISTAS = { GARANTIA: ['ENVIADO PARA GARANTIA', 'AGUARDANDO NF'], 'PEÇAS': ['AGUARDANDO PEÇA', 'PEÇA PEDIDA'],
   SUCATA: ['SUCATA'], FINALIZADOS: ['FINALIZADO'] };
@@ -75,45 +80,169 @@ function paraFinalizar(itens, finalizados) {
 
 // ===== Peças com defeito e notebooks que se completam =====
 
-// Peça → palavras que aparecem na descrição do teste (sem acento, maiúsculo).
-var PECAS = [
-  ['TELA', ['TELA', 'DISPLAY', 'LCD', 'PIXEL', 'LINHA NA', 'MANCHA', 'BACKLIGHT', 'SEM IMAGEM', 'SEM VIDEO', 'NAO DA VIDEO', 'NAO DA IMAGEM', 'IMAGEM']],
-  ['WEBCAM', ['WEBCAM', 'CAMERA']],
-  ['TECLADO', ['TECLADO', 'TECLA']],
-  ['TOUCHPAD', ['TOUCHPAD', 'TOUCH PAD', 'MOUSEPAD']],
-  ['BATERIA', ['BATERIA']],
-  ['CARREGADOR', ['CARREGADOR', 'FONTE', 'NAO CARREGA', 'CONECTOR DE CARGA', 'DC JACK']],
-  ['ÁUDIO', ['AUDIO', 'SOM', 'ALTO FALANTE', 'AUTO FALANTE', 'AUTO-FALANTE', 'ALTO-FALANTE', 'CHIANDO']],
-  ['MICROFONE', ['MICROFONE', ' MIC ']],
-  ['ENTRADA P2', [' P2 ', ' FONE ', 'FONE DE OUVIDO', 'FONES']],
-  ['WI-FI', ['WIFI', 'WI-FI', 'WI FI', 'INTERNET', 'PLACA DE REDE', 'REDE']],
-  ['USB', ['USB']],
-  ['SSD', ['SSD', 'HD ', 'ARMAZENAMENTO']],
-  ['MEMÓRIA', ['MEMORIA', 'RAM']],
-  ['CARCAÇA', ['CARCACA', 'TAMPA', 'DOBRADICA', 'QUEBRAD']],
-  ['PLACA-MÃE', ['PLACA MAE', 'PLACA-MAE', 'NAO LIGA', 'CURTO', 'CORROID']]
-];
-
 function semAcento_(s) {
   return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
 }
 
-/** Peças com defeito a partir da descrição do teste. "TELA QUEBRADA" conta como tela, não carcaça. */
-function pecasDoDefeito(texto) {
-  var t = ' ' + semAcento_(texto).replace(/[^A-Z0-9-]+/g, ' ') + ' ';
-  var out = [];
-  PECAS.forEach(function (p) {
-    var achou = p[1].some(function (w) { return t.indexOf(w) >= 0; });
-    if (!achou) return;
-    if (p[0] === 'CARCAÇA' && /TELA QUEBRAD/.test(t) && !/CARCACA|TAMPA|DOBRADICA/.test(t)) return;
-    if (p[0] === 'TELA' && t.indexOf('IMAGEM') >= 0 && /WEBCAM|CAMERA/.test(t) && !/TELA|DISPLAY|LCD|PIXEL|VIDEO/.test(t)) return;
-    out.push(p[0]);
+// ===== Previsão das peças com defeito (sem IA) =====
+// Lê o defeito do teste e depois cada observação dos técnicos, em ordem.
+// Uma observação nova pode confirmar, levantar suspeita, dizer que a peça foi trocada
+// ou desmentir (peça boa, "não é a tela", "troquei e não resolveu").
+
+// Peça → [palavras que nomeiam a peça, sintomas (só levantam suspeita), sinais de que a peça está boa]
+var PREVER = [
+  ['TELA', ['TELA', 'DISPLAY', 'LCD', 'PIXEL', 'BACKLIGHT'], ['TELA PRETA', 'TELA ESCURA', 'TELA APAGADA', 'SEM IMAGEM', 'SEM VIDEO', 'NAO DA VIDEO', 'NAO DA IMAGEM'],
+    ['MOSTRA O LOGO', 'MOSTRA A LOGO', 'APARECE O LOGO', 'APARECE A LOGO', 'DA IMAGEM', 'COM IMAGEM', 'DA VIDEO']],
+  ['CHIP DA BIOS', ['CHIP DA BIOS', 'BIOS CORROMPID', 'GRAVAR A BIOS', 'REGRAVAR A BIOS', ' EC ', 'W25', '25Q'],
+    ['NAO ABRE A BIOS', 'NAO ENTRA NA BIOS', 'NAO ACESSA A BIOS', 'TRAVA NO LOGO', 'FICA NO LOGO', 'NAO PASSA DO LOGO'],
+    ['ABRE A BIOS', 'ENTRA NA BIOS', 'ACESSA A BIOS']],
+  ['WEBCAM', ['WEBCAM', 'CAMERA'], [], []],
+  ['TECLADO', ['TECLADO', 'TECLA'], [], []],
+  ['TOUCHPAD', ['TOUCHPAD', 'TOUCH PAD', 'MOUSEPAD'], [], []],
+  ['BATERIA', ['BATERIA'], ['NAO SEGURA CARGA', 'DESCARREGA RAPIDO'], []],
+  ['CARREGADOR', ['CARREGADOR', 'FONTE', 'CONECTOR DE CARGA', 'DC JACK'], ['NAO CARREGA'], ['CARREGA NORMAL', 'ESTA CARREGANDO']],
+  ['ÁUDIO', ['AUDIO', ' SOM ', 'ALTO FALANTE', 'AUTO FALANTE', 'ALTO-FALANTE', 'AUTO-FALANTE'], ['CHIANDO'], []],
+  ['MICROFONE', ['MICROFONE', ' MIC '], [], []],
+  ['ENTRADA P2', [' P2 ', ' FONE ', 'FONE DE OUVIDO', ' FONES '], [], []],
+  ['WI-FI', ['WIFI', 'WI-FI', 'WI FI', 'PLACA DE REDE', 'WIRELESS'], ['SEM INTERNET', 'NAO CONECTA', 'NAO ACHA REDE'], []],
+  ['USB', ['USB'], [], []],
+  ['HDMI', ['HDMI'], [], []],
+  ['SSD', ['SSD', ' HD ', 'NVME', 'ARMAZENAMENTO'], ['NAO ACHA O DISCO', 'SEM SISTEMA', 'NAO DA BOOT', 'NO BOOTABLE'], []],
+  ['MEMÓRIA', ['MEMORIA', ' PENTE', ' RAM '], ['APITA', 'BIPANDO', 'BIPES'], []],
+  ['COOLER', ['COOLER', 'VENTOINHA', ' FAN '], ['ESQUENTA', 'AQUECEND', 'SUPERAQUEC', 'DESLIGA SOZINHO'], []],
+  ['CARCAÇA', ['CARCACA', 'TAMPA', 'DOBRADICA', 'BASE QUEBRAD'], [], []],
+  ['FLAT', ['FLAT', 'CABO DE VIDEO'], [], []],
+  ['PLACA-MÃE', ['PLACA MAE', 'PLACA-MAE', 'CORROID', 'OXIDAD'], ['NAO LIGA', 'EM CURTO', 'NAO ACENDE', 'PLACA MORTA'], []]
+];
+var P_IGNORA = /ESPERADO|SO PARA TESTE|PARA TESTAR/;
+var P_NEGA = /NAO (ESTA |ESTAVA |TA )?(FUNCION\w*|LIGA\w*|CARREG\w*|RECONHEC\w*|PEGA\w*|RESPOND\w*|ACEND\w*|ABRE|ENTRA|DA \w+)/g;
+var P_NAO_RESOLVEU = /NAO RESOLV|CONTINUA (O |COM )?(MESMO )?(DEFEITO|PROBLEMA)|MESMO DEFEITO/;
+var P_TROCA = /TROCAD|TROQUEI|SUBSTITUID|SUBSTITUI |REPARAD|REPAREI|CONSERTAD|CONSERTEI|RESOLVID|RESOLVI |ARRUMAD|ARRUMEI|REGRAVAD|REGRAVEI|REBALLING|PECA NOVA|COLOQUEI (UM|UMA|OUTR)/;
+var P_OK = / OK |FUNCION|NORMAL|SEM DEFEITO|PERFEIT|DESCARTAD|ESTA BO|ESTAO BO|TESTAD\w* BO| BOA | BOM |NAO E A |NAO E O |NAO ERA |NAO TEM DEFEITO|NAO E ESS/;
+var P_SUSPEITA = /SUSPEIT|POSSIVEL|TALVEZ|PODE SER|ACHO QUE|PARECE/;
+var P_PROVAVEL = /PROVAVE/;
+var P_CONFIRMA = /CONFIRMAD|COM DEFEITO|DEFEITUOS|QUEIMAD|ESTOURAD|CONDENAD|QUEBRAD|TRINCAD|RUIM|DANIFICAD|DEFX|NAO TEM CONSERTO|SEM CONSERTO/;
+var NIVEL = { 'SUSPEITA': 1, 'PROVÁVEL': 2, 'CONFIRMADA': 3 };
+
+function temSemNao_(t, w) {
+  var i = t.indexOf(w);
+  while (i >= 0) {
+    if (t.slice(Math.max(0, i - 4), i) !== 'NAO ') return true;
+    i = t.indexOf(w, i + 1);
+  }
+  return false;
+}
+
+/** Estado que uma frase dá a cada peça que ela cita: { PEÇA: {estado, explicito} }. */
+function lerFrase_(frase) {
+  var t = ' ' + semAcento_(frase).replace(/[^A-Z0-9-]+/g, ' ').trim() + ' ';
+  var out = {};
+  if (t.trim().length < 2 || P_IGNORA.test(t)) return out;
+  var s = t.replace(P_NEGA, ' DEFX ');
+  PREVER.forEach(function (p) {
+    var limpo = t;
+    p[2].forEach(function (w) { limpo = limpo.split(w).join(' '); });
+    var forte = p[1].some(function (w) { return limpo.indexOf(w) >= 0; });
+    var fraco = p[2].some(function (w) { return t.indexOf(w) >= 0; });
+    var bom = p[3].some(function (w) { return temSemNao_(t, w); });
+    if (!forte && !fraco && !bom) return;
+    var e, x = true;
+    if (bom || P_NAO_RESOLVEU.test(s)) e = 'OK';
+    else if (P_TROCA.test(s)) e = 'TROCADA';
+    else if (P_OK.test(s)) e = 'OK';
+    else if (P_SUSPEITA.test(s)) e = 'SUSPEITA';
+    else if (P_PROVAVEL.test(s)) e = 'PROVÁVEL';
+    else if (forte && P_CONFIRMA.test(s)) e = 'CONFIRMADA';
+    else { e = forte ? 'PROVÁVEL' : 'SUSPEITA'; x = false; }
+    out[p[0]] = { estado: e, explicito: x, forte: forte };
   });
   return out;
 }
 
-function lista_(v) {
-  return String(v == null ? '' : v).split(/[,;\/]+/).map(function (x) { return x.trim().toUpperCase(); }).filter(String);
+/**
+ * Previsão das peças com defeito. defeito = descrição do teste; textos = observações em ordem (mais antiga primeiro).
+ * Retorna { texto: "CHIP DA BIOS (SUSPEITA) | DESCARTADO: TELA", pecas: ['CHIP DA BIOS'] }.
+ */
+function preverPecas(defeito, textos) {
+  var est = {}, ordem = [], suspeitou = {};
+  [defeito].concat(textos || []).forEach(function (txt) {
+    String(txt == null ? '' : txt).split(/[.;,\n!?]+| MAS | POREM | PORÉM | mas | porém | porem /).forEach(function (fr) {
+      var r = lerFrase_(fr);
+      Object.keys(r).forEach(function (pc) {
+        var n = r[pc], a = est[pc];
+        if (!a) { ordem.push(pc); est[pc] = n.estado; }
+        else if (n.explicito) est[pc] = n.estado;
+        else if (NIVEL[a]) est[pc] = NIVEL[n.estado] > NIVEL[a] ? n.estado : a;
+        else if (n.forte) est[pc] = n.estado;          // estava boa/trocada e voltou a ser citada com o nome da peça
+        if (NIVEL[est[pc]]) suspeitou[pc] = true;
+      });
+    });
+  });
+  var def = ordem.filter(function (pc) { return NIVEL[est[pc]]; })
+    .sort(function (a, b) { return NIVEL[est[b]] - NIVEL[est[a]]; });
+  var troc = ordem.filter(function (pc) { return est[pc] === 'TROCADA'; });
+  var desc = ordem.filter(function (pc) { return est[pc] === 'OK' && suspeitou[pc]; });
+  var partes = [def.map(function (pc) { return pc + ' (' + est[pc] + ')'; }).join(', ')];
+  if (troc.length) partes.push('TROCADO: ' + troc.join(', '));
+  if (desc.length) partes.push('DESCARTADO: ' + desc.join(', '));
+  var texto = partes.filter(String).join(' | ');
+  return { texto: texto, pecas: def };
+}
+
+/** Peças com defeito a partir do texto da coluna PEÇAS (parte antes do "|", sem o grau entre parênteses). */
+function pecasDaColuna(v) {
+  return String(v == null ? '' : v).split('|')[0].split(/[,;\/]+/)
+    .map(function (x) { return x.replace(/\(.*?\)/g, '').trim().toUpperCase(); }).filter(String);
+}
+
+// ===== Observações (nunca apagadas) =====
+
+/** Resumo curto de uma observação para caber na célula: primeira frase, até 70 letras. */
+function resumoObs(texto, max) {
+  max = max || 70;
+  var t = String(texto == null ? '' : texto).replace(/\s+/g, ' ').trim();
+  var f = t.split(/(?<=[.;!?])\s/)[0].replace(/[.;]$/, '');
+  if (f.length > max) f = f.slice(0, max).replace(/\s+\S*$/, '');
+  return f.length < t.replace(/[.;]$/, '').length ? f + '…' : f;
+}
+
+function dataCurta_(d) {
+  if (d instanceof Date) return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2);
+  var m = String(d || '').match(/^(\d{2})\/(\d{2})/);
+  return m ? m[1] + '/' + m[2] : String(d || '');
+}
+
+function dataLonga_(d) {
+  if (d instanceof Date) return dataCurta_(d) + '/' + d.getFullYear();
+  return String(d || '');
+}
+
+/** Texto da célula O QUE FOI FEITO: uma linha curta por observação, a mais nova em cima. */
+function celulaNotas(obs) {
+  return (obs || []).slice().reverse().map(function (o) {
+    return dataCurta_(o.data) + ' · ' + (o.tecnico || '—') + ' · ' + resumoObs(o.texto);
+  }).join('\n');
+}
+
+/** Nota da célula (aparece ao passar o mouse): tudo, completo, em ordem. */
+function notaCompleta(obs) {
+  return (obs || []).map(function (o) {
+    return dataLonga_(o.data) + ' · ' + (o.tecnico || '—') + '\n' + String(o.texto || '').trim();
+  }).join('\n\n');
+}
+
+/** Converte o texto antigo da célula em observações: linhas "dd/mm/aaaa (TÉCNICO): texto" ou um bloco só. */
+function notasAntigas(texto, dataPadrao, tecnicoPadrao) {
+  var out = [];
+  String(texto || '').split(/\r?\n/).forEach(function (l) {
+    var t = l.trim();
+    if (!t) return;
+    var m = t.match(/^(\d{2}\/\d{2}\/\d{4})\s*(?:\(([^)]*)\))?\s*:\s*(.*)$/);
+    if (m) out.push({ data: m[1], tecnico: (m[2] || tecnicoPadrao || '').trim(), texto: m[3] });
+    else if (out.length && !/^\d{2}\/\d{2}\//.test(t)) out[out.length - 1].texto += ' ' + t;
+    else out.push({ data: dataPadrao || '', tecnico: tecnicoPadrao || '', texto: t });
+  });
+  return out;
 }
 
 function modeloChave_(m) { return String(m == null ? '' : m).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
@@ -130,7 +259,7 @@ function combinacoes(itens) {
     var sit = String(it['SITUAÇÃO'] || '').trim().toUpperCase();
     if (sit === 'FINALIZADO') return;
     var m = modeloChave_(it.MODELO);
-    var pecas = lista_(it['PEÇAS COM DEFEITO']);
+    var pecas = pecasDaColuna(it['PEÇAS']);
     if (!m || !pecas.length) return;
     abertos.push({ i: i, m: m, pecas: pecas, serial: String(it.SERIAL || '').trim() || ('linha ' + (it._linha || i + 2)), sucata: sit === 'SUCATA' });
   });
@@ -177,12 +306,15 @@ function letra_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = Strin
 /** Deixa a planilha no formato combinado. Roda a cada abertura (rápido quando já está pronta). */
 function prepararPlanilha_() {
   var cache = CacheService.getScriptCache();
-  if (cache.get('pronta') === '3') return;
+  if (cache.get('pronta') === VERSAO_PLANILHA) return;
   var ss = planilha_();
   var aba = abaPrincipal_(ss);
   var meus = ss.getSheetByName('MEUS');
   if (meus) ss.deleteSheet(meus);
   var cab = cabecalho_(aba);
+  // A previsão das peças agora fica na coluna PEÇAS.
+  var velhaP = cab.indexOf('PEÇAS COM DEFEITO');
+  if (velhaP >= 0) { aba.deleteColumn(velhaP + 1); cab = cabecalho_(aba); }
   COLUNAS_AUTO.forEach(function (c) {
     if (cab.indexOf(c) < 0) { aba.getRange(1, cab.length + 1).setValue(c); cab.push(c); }
   });
@@ -205,6 +337,7 @@ function prepararPlanilha_() {
   Object.keys(VISTAS).forEach(function (nome) {
     var v = ss.getSheetByName(nome);
     if (!v) v = ss.insertSheet(nome);
+    v.clearContents();
     v.getRange(1, 1, 1, cab.length).setValues([cab]);
     v.setFrozenRows(1);
     var cond = VISTAS[nome].map(function (s) { return '(' + ABA + '!' + cSit + '2:' + cSit + '="' + s + '")'; }).join('+');
@@ -228,8 +361,83 @@ function prepararPlanilha_() {
     h.getRange(1, 1, 1, 6).setValues([['DATA', 'TÉCNICO', 'SERIAL', 'O QUE MUDOU', 'ANTES', 'DEPOIS']]);
     h.setFrozenRows(1);
   }
+  // Observações: uma linha por observação, nunca apagada. Na primeira vez, traz o que já estava escrito.
+  var cN = cab.indexOf(NOTAS) + 1;
+  if (!ss.getSheetByName(OBS)) {
+    var o = ss.insertSheet(OBS);
+    o.getRange(1, 1, 1, 6).setValues([['DATA', 'TÉCNICO', 'SERIAL', 'MODELO', 'OBSERVAÇÃO', 'ORIGEM']]);
+    o.setFrozenRows(1);
+    o.setColumnWidth(5, 600);
+    o.getRange('E:E').setWrap(true);
+    migrarNotas_(ss, aba);
+  }
+  // Célula de notas compacta: uma linha por observação, sem quebrar o texto.
+  if (cN > 0) {
+    aba.getRange(1, cN, aba.getMaxRows(), 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP).setVerticalAlignment('top');
+    aba.setColumnWidth(cN, 460);
+  }
   garantirGatilho_();
-  cache.put('pronta', '3', 21600);
+  recalcular_(aba);
+  cache.put('pronta', VERSAO_PLANILHA, 21600);
+}
+
+/** Uma vez só: o texto antigo de NOTAS e de PEÇAS vira observação, para nada se perder. */
+function migrarNotas_(ss, aba) {
+  var d = lerItens_(aba);
+  var linhas = [];
+  d.itens.forEach(function (it) {
+    var data = it['ÚLTIMA ATUALIZAÇÃO'] || it['DATA ENTRADA'] || '';
+    var lista = notasAntigas(it[NOTAS], data, it['TÉCNICO']);
+    var pc = String(it['PEÇAS'] || '').trim();
+    if (pc) lista.push({ data: data, tecnico: it['TÉCNICO'] || '', texto: 'Peças com defeito: ' + pc });
+    lista.forEach(function (o) {
+      linhas.push([paraData_(o.data), o.tecnico, chaveObs_(it), it.MODELO || '', o.texto, 'PLANILHA']);
+    });
+  });
+  if (linhas.length) ss.getSheetByName(OBS).getRange(2, 1, linhas.length, 6).setValues(linhas);
+}
+
+function paraData_(v) {
+  if (v instanceof Date) return v;
+  var m = String(v || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? new Date(+m[3], +m[2] - 1, +m[1]) : new Date();
+}
+
+/** Chave que liga a observação ao aparelho: o serial (ou a linha, se ainda não tem serial). */
+function chaveObs_(it) {
+  return String(it.SERIAL || '').trim().toUpperCase() || ('LINHA ' + it._linha);
+}
+
+/** Todas as observações, agrupadas pelo serial normalizado, em ordem. */
+function lerObs_(ss) {
+  var o = ss.getSheetByName(OBS);
+  var mapa = {};
+  if (!o || o.getLastRow() < 2) return mapa;
+  o.getRange(2, 1, o.getLastRow() - 1, 6).getValues().forEach(function (l) {
+    var k = normalizarSerial(l[2]);
+    if (!k || !String(l[4]).trim()) return;
+    (mapa[k] = mapa[k] || []).push({ data: l[0], tecnico: String(l[1] || ''), texto: String(l[4]), origem: String(l[5] || '') });
+  });
+  return mapa;
+}
+
+function obsDoItem_(mapa, it) { return mapa[normalizarSerial(chaveObs_(it))] || []; }
+
+/** Acrescenta observações (sem repetir texto igual do mesmo aparelho). Retorna quantas entraram. */
+function adicionarObs_(ss, it, lista, mapa) {
+  var o = ss.getSheetByName(OBS);
+  if (!o || !lista.length) return 0;
+  var ja = obsDoItem_(mapa || lerObs_(ss), it).map(function (x) { return semAcento_(x.texto).replace(/\s+/g, ' ').trim(); });
+  var linhas = [];
+  lista.forEach(function (x) {
+    var t = String(x.texto || '').trim();
+    var n = semAcento_(t).replace(/\s+/g, ' ');
+    if (!t || ja.indexOf(n) >= 0) return;
+    ja.push(n);
+    linhas.push([paraData_(x.data), x.tecnico || '', chaveObs_(it), it.MODELO || '', t, x.origem || 'APP']);
+  });
+  if (linhas.length) o.getRange(o.getLastRow() + 1, 1, linhas.length, 6).setValues(linhas);
+  return linhas.length;
 }
 
 function garantirGatilho_() {
@@ -271,18 +479,29 @@ function listas_(ss) {
   return out;
 }
 
-/** Recalcula PEÇAS COM DEFEITO (só quando vazia ou veio do app) e COMBINA COM de toda a aba. */
+/**
+ * Recalcula de toda a aba: PEÇAS (previsão pelo defeito + observações), a célula de NOTAS
+ * (resumo, com o texto completo na nota da célula) e COMBINA COM. Só grava o que mudou.
+ */
 function recalcular_(aba) {
   var d = lerItens_(aba);
   if (!d.itens.length) return;
-  var cP = d.cab.indexOf('PEÇAS COM DEFEITO'), cC = d.cab.indexOf('COMBINA COM');
-  if (cP < 0 || cC < 0) return;
+  var mapa = lerObs_(aba.getParent());
+  var cP = d.cab.indexOf('PEÇAS'), cN = d.cab.indexOf(NOTAS), cC = d.cab.indexOf('COMBINA COM');
+  var notas = cN >= 0 ? aba.getRange(2, cN + 1, aba.getLastRow() - 1, 1).getNotes() : [];
   d.itens.forEach(function (it) {
-    if (!String(it['PEÇAS COM DEFEITO'] || '').trim()) {
-      var p = pecasDoDefeito(it.DEFEITO);
-      if (p.length) { it['PEÇAS COM DEFEITO'] = p.join(', '); aba.getRange(it._linha, cP + 1).setValue(it['PEÇAS COM DEFEITO']); }
+    var obs = obsDoItem_(mapa, it);
+    if (cP >= 0) {
+      var p = preverPecas(it.DEFEITO, obs.map(function (o) { return o.texto; })).texto;
+      if (String(it['PEÇAS'] || '') !== p) { it['PEÇAS'] = p; aba.getRange(it._linha, cP + 1).setValue(p); }
+    }
+    if (cN >= 0 && obs.length) {
+      var c = celulaNotas(obs), n = notaCompleta(obs);
+      if (String(it[NOTAS] || '') !== c) aba.getRange(it._linha, cN + 1).setValue(c);
+      if ((notas[it._linha - 2] || [''])[0] !== n) aba.getRange(it._linha, cN + 1).setNote(n);
     }
   });
+  if (cC < 0) return;
   var comb = combinacoes(d.itens);
   d.itens.forEach(function (it, i) {
     if (String(it['COMBINA COM'] || '') !== comb[i]) aba.getRange(it._linha, cC + 1).setValue(comb[i]);
@@ -310,7 +529,13 @@ function apiInicio() {
     var p = String(it['ÚLTIMA ATUALIZAÇÃO'] || '').split('/');
     return p.length === 3 && new Date(+p[2], +p[1] - 1, +p[0]) >= limite;
   });
+  var mapa = lerObs_(ss);
+  itens.forEach(function (it) { it._obs = obsParaTela_(obsDoItem_(mapa, it)); });
   return { listas: listas_(ss), itens: itens, colunas: d.cab, planilha: ss.getUrl(), ia: !!iaChave_() };
+}
+
+function obsParaTela_(obs) {
+  return obs.map(function (o) { return { data: dataLonga_(o.data), tecnico: o.tecnico, texto: o.texto }; });
 }
 
 /** Busca um aparelho pelo serial (em toda a planilha). */
@@ -319,7 +544,10 @@ function apiBuscar(serial) {
   if (!n) return null;
   var d = lerItens_(abaPrincipal_(planilha_()));
   var achados = d.itens.filter(function (it) { return normalizarSerial(it.SERIAL) === n; });
-  return achados.length ? achados[achados.length - 1] : null;
+  if (!achados.length) return null;
+  var it = achados[achados.length - 1];
+  it._obs = obsParaTela_(obsDoItem_(lerObs_(planilha_()), it));
+  return it;
 }
 
 // ===== IA do SCAN (Gemini): lê a etiqueta pela foto quando o código de barras não basta =====
@@ -392,7 +620,11 @@ function apiPorEan(ean) {
   return null;
 }
 
-/** Cria (sem _linha) ou atualiza (com _linha) um aparelho. Grava só os campos que mudaram. */
+/**
+ * Cria (sem _linha) ou atualiza (com _linha) um aparelho. Grava só os campos que mudaram.
+ * item._nota: observação nova do técnico (vira uma linha em OBSERVAÇÕES, nada é apagado).
+ * item._notas: várias observações [{data, texto, tecnico, origem}] (vindas do outro projeto).
+ */
 function apiSalvar(item, tecnico) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -422,10 +654,15 @@ function apiSalvar(item, tecnico) {
       if (!item['DATA ENTRADA']) item['DATA ENTRADA'] = Utilities.formatDate(agora, 'America/Sao_Paulo', 'dd/MM/yyyy');
       if (!item['SITUAÇÃO']) item['SITUAÇÃO'] = 'EM ANÁLISE';
       if (!item['TÉCNICO']) item['TÉCNICO'] = tecnico || '';
-      var linha = cab.map(function (h) { return h === 'ÚLTIMA ATUALIZAÇÃO' ? agora : paraCelula(h, item[h] == null ? '' : item[h]); });
+      var linha = cab.map(function (h) {
+        if (h === 'ÚLTIMA ATUALIZAÇÃO') return agora;
+        if (COLUNAS_DO_APP.indexOf(h) >= 0) return '';
+        return paraCelula(h, item[h] == null ? '' : item[h]);
+      });
       var r = aba.getLastRow() + 1;
       aba.getRange(r, 1, 1, cab.length).setValues([linha]);
       historico_(ss, tecnico, serial, 'CADASTRO', '', item['SITUAÇÃO']);
+      adicionarObs_(ss, { SERIAL: serial, MODELO: item.MODELO, _linha: r }, notasDoPedido_(item, tecnico, agora));
       recalcular_(aba);
       return { ok: true, linha: r };
     }
@@ -437,7 +674,7 @@ function apiSalvar(item, tecnico) {
     }
     var mudou = false, mudouCol = {};
     cab.forEach(function (h, j) {
-      if (h === 'ÚLTIMA ATUALIZAÇÃO' || !(h in item)) return;
+      if (h === 'ÚLTIMA ATUALIZAÇÃO' || COLUNAS_DO_APP.indexOf(h) >= 0 || !(h in item)) return;
       var novo = paraCelula(h, item[h] == null ? '' : item[h]);
       var velho = atual[j];
       var vs = velho instanceof Date ? Utilities.formatDate(velho, 'America/Sao_Paulo', 'dd/MM/yyyy') : String(velho);
@@ -448,12 +685,10 @@ function apiSalvar(item, tecnico) {
       mudouCol[h] = true;
       historico_(ss, tecnico, atual[cSerial], h, vs, ns);
     });
-    // Defeito mudou e a pessoa não mexeu nas peças: refaz as peças a partir do defeito novo.
-    var cD = cab.indexOf('DEFEITO'), cP = cab.indexOf('PEÇAS COM DEFEITO');
-    if (cD >= 0 && cP >= 0 && mudouCol.DEFEITO && !mudouCol['PEÇAS COM DEFEITO']) {
-      var novas = pecasDoDefeito(atual[cD]).join(', ');
-      if (novas !== String(atual[cP])) { historico_(ss, tecnico, atual[cSerial], 'PEÇAS COM DEFEITO', atual[cP], novas); atual[cP] = novas; mudou = true; }
-    }
+    var cM = cab.indexOf('MODELO');
+    var it2 = { SERIAL: atual[cSerial], MODELO: cM >= 0 ? atual[cM] : '', _linha: r2 };
+    if (mudouCol.SERIAL) renomearObs_(ss, normalizarSerial(item._serial) || ('LINHA ' + r2), chaveObs_(it2));
+    if (adicionarObs_(ss, it2, notasDoPedido_(item, tecnico, agora))) mudou = true;
     if (!mudou) return { ok: true, linha: r2, nada: true };
     var cu = cab.indexOf('ÚLTIMA ATUALIZAÇÃO');
     if (cu >= 0) atual[cu] = agora;
@@ -463,6 +698,23 @@ function apiSalvar(item, tecnico) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function notasDoPedido_(item, tecnico, agora) {
+  var out = (item._notas || []).slice();
+  var t = String(item._nota || '').trim();
+  if (t) out.push({ data: agora, tecnico: tecnico || '', texto: t, origem: 'APP' });
+  return out;
+}
+
+/** Aparelho ganhou/mudou o serial: as observações acompanham. */
+function renomearObs_(ss, de, para) {
+  var o = ss.getSheetByName(OBS);
+  if (!o || o.getLastRow() < 2 || !de) return;
+  var r = o.getRange(2, 3, o.getLastRow() - 1, 1);
+  var v = r.getValues(), mudou = false;
+  v.forEach(function (l) { if (normalizarSerial(l[0]) === normalizarSerial(de)) { l[0] = para; mudou = true; } });
+  if (mudou) r.setValues(v);
 }
 
 // ===== Anotações do outro projeto (chegam pelo GitHub) =====
@@ -494,17 +746,6 @@ function lerNota(texto) {
   return o;
 }
 
-/** Junta as entradas novas às notas existentes, sem repetir. */
-function juntarNotas(existente, entradas) {
-  var atual = String(existente || '');
-  var novas = [];
-  entradas.forEach(function (e) {
-    var linha = e.data + ' (JOÃO PEDRO): ' + e.texto;
-    if (atual.indexOf(e.texto) < 0 && novas.indexOf(linha) < 0) novas.push(linha);
-  });
-  return { texto: novas.length ? (atual ? atual + '\n' : '') + novas.join('\n') : atual, novas: novas.length };
-}
-
 /** Recebe as notas do GitHub (POST com a chave). Cada nota vira/atualiza a linha do notebook. */
 function doPost(e) {
   var corpo = {};
@@ -522,24 +763,23 @@ function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
 
 function aplicarNota_(n) {
   if (!n.serial) return { ok: false, erro: 'nota sem serial' };
-  var ja = apiBuscar(n.serial);
   var tec = 'JOÃO PEDRO';
+  var notas = n.entradas.map(function (e) { return { data: e.data, tecnico: tec, texto: e.texto, origem: 'OUTRO PROJETO' }; });
+  // A análise das peças feita no outro projeto entra como observação (a previsão lê e respeita).
+  if (n.pecas) notas.push({ data: new Date(), tecnico: tec, texto: 'Peças com defeito: ' + n.pecas, origem: 'OUTRO PROJETO' });
+  var ja = apiBuscar(n.serial);
   if (!ja) {
     var novo = { SERIAL: n.serial.toUpperCase(), MODELO: n.modelo || '', DEFEITO: n.defeito || '', 'TÉCNICO': tec,
-      'SITUAÇÃO': (n.situacao || 'EM REPARO').toUpperCase(), 'PEÇAS COM DEFEITO': (n.pecas || '').toUpperCase(),
-      'O QUE FOI FEITO / NOTAS': juntarNotas('', n.entradas).texto };
+      'SITUAÇÃO': (n.situacao || 'EM REPARO').toUpperCase(), _notas: notas };
     var r = apiSalvar(novo, tec + ' (notas)');
     return { ok: r.ok, serial: n.serial, criado: true };
   }
-  var mud = { _linha: ja._linha, _serial: ja.SERIAL };
-  var j = juntarNotas(ja['O QUE FOI FEITO / NOTAS'], n.entradas);
-  if (j.novas) mud['O QUE FOI FEITO / NOTAS'] = j.texto;
+  var mud = { _linha: ja._linha, _serial: ja.SERIAL, _notas: notas };
   if (n.situacao && ENCERRADAS.indexOf(String(ja['SITUAÇÃO']).toUpperCase()) < 0) mud['SITUAÇÃO'] = n.situacao.toUpperCase();
-  if (n.pecas) mud['PEÇAS COM DEFEITO'] = n.pecas.toUpperCase();
   if (n.defeito && !String(ja.DEFEITO || '').trim()) mud.DEFEITO = n.defeito;
   if (n.modelo && !String(ja.MODELO || '').trim()) mud.MODELO = n.modelo;
   var r2 = apiSalvar(mud, tec + ' (notas)');
-  return { ok: r2.ok, serial: n.serial, novas: j.novas };
+  return { ok: r2.ok, serial: n.serial, nada: !!r2.nada };
 }
 
 // ===== Conferência com o controle de qualidade =====
@@ -559,16 +799,12 @@ function sincronizarQualidade() {
     var idx = paraFinalizar(d.itens, fin);
     var cSit = d.cab.indexOf('SITUAÇÃO') + 1;
     var cUlt = d.cab.indexOf('ÚLTIMA ATUALIZAÇÃO') + 1;
-    var cNota = d.cab.indexOf('O QUE FOI FEITO / NOTAS') + 1;
     var hoje = Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'dd/MM/yyyy');
     idx.forEach(function (i) {
       var it = d.itens[i];
       aba.getRange(it._linha, cSit).setValue(FINALIZADO);
       if (cUlt > 0) aba.getRange(it._linha, cUlt).setValue(new Date());
-      if (cNota > 0) {
-        var nota = String(it['O QUE FOI FEITO / NOTAS'] || '');
-        aba.getRange(it._linha, cNota).setValue((nota ? nota + '\n' : '') + hoje + ': finalizado (controle de qualidade)');
-      }
+      adicionarObs_(ss, it, [{ data: new Date(), tecnico: 'AUTOMÁTICO', texto: 'Finalizado (aprovado no controle de qualidade).', origem: 'QUALIDADE' }]);
       historico_(ss, 'AUTOMÁTICO', it.SERIAL, 'SITUAÇÃO', it['SITUAÇÃO'], FINALIZADO);
     });
     recalcular_(aba);
@@ -586,5 +822,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { lerNota: lerNota, juntarNotas: juntarNotas, pecasDoDefeito: pecasDoDefeito, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }

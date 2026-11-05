@@ -51,22 +51,47 @@ test('a tela tem script válido', () => {
   assert.doesNotThrow(() => new Function(js));
 });
 
-const { pecasDoDefeito, combinacoes, lerNota, juntarNotas } = m.exports;
+const { preverPecas, pecasDaColuna, combinacoes, lerNota, resumoObs, celulaNotas, notaCompleta, notasAntigas } = m.exports;
 
-test('peças a partir da descrição do teste', () => {
-  assert.deepStrictEqual(pecasDoDefeito('TELA NÃO DA IMAGEM, MICROFONE E WEBCAM NÃO FUNCIONAM'), ['TELA', 'WEBCAM', 'MICROFONE']);
-  assert.deepStrictEqual(pecasDoDefeito('ENTRADA P2 NÃO FUNCIONA'), ['ENTRADA P2']);
-  assert.deepStrictEqual(pecasDoDefeito('webcam ruim'), ['WEBCAM']);
-  assert.deepStrictEqual(pecasDoDefeito('TELA QUEBRADA E NÃO LIGA'), ['TELA', 'PLACA-MÃE']);
-  assert.deepStrictEqual(pecasDoDefeito('MUITAS TECLAS NÃO FUNCIONAM'), ['TECLADO']);
+test('previsão: peças a partir da descrição do teste', () => {
+  assert.deepStrictEqual(preverPecas('TELA NÃO DA IMAGEM, MICROFONE E WEBCAM NÃO FUNCIONAM', []).pecas.sort(), ['MICROFONE', 'TELA', 'WEBCAM']);
+  assert.strictEqual(preverPecas('ENTRADA P2 NÃO FUNCIONA', []).texto, 'ENTRADA P2 (CONFIRMADA)');
+  assert.strictEqual(preverPecas('webcam ruim', []).texto, 'WEBCAM (CONFIRMADA)');
+  assert.strictEqual(preverPecas('TELA PRETA', []).texto, 'TELA (SUSPEITA)');
+  assert.strictEqual(preverPecas('NAO LIGA', []).texto, 'PLACA-MÃE (SUSPEITA)');
+  assert.deepStrictEqual(preverPecas('MUITAS TECLAS NÃO FUNCIONAM', []).pecas, ['TECLADO']);
+});
+
+test('previsão: observações confirmam, trocam ou desmentem', () => {
+  const obs = 'Liga, mostra o logo e fica com tela preta, F2 não abre a BIOS. Chip da BIOS retirado e com fios soldados para leitura no T48; leitura ainda falhando por mau contato em 5 pinos. Sem o chip a placa não liga nem acende a luz de carga (esperado, o EC fica no mesmo chip).';
+  assert.strictEqual(preverPecas('TELA PRETA', [obs]).texto, 'CHIP DA BIOS (PROVÁVEL) | DESCARTADO: TELA');
+  assert.strictEqual(preverPecas('TELA PRETA', [obs, 'Peças com defeito: CHIP DA BIOS W25R256JW (SUSPEITA)']).texto, 'CHIP DA BIOS (SUSPEITA) | DESCARTADO: TELA');
+  assert.strictEqual(preverPecas('TELA NÃO DA IMAGEM, MICROFONE E WEBCAM NÃO FUNCIONAM',
+    ['Troquei a webcam, ok', 'Testei o microfone e está bom', 'tela confirmada com defeito']).texto,
+    'TELA (CONFIRMADA) | TROCADO: WEBCAM | DESCARTADO: MICROFONE');
+  assert.strictEqual(preverPecas('TECLADO COM DEFEITO', ['troquei o teclado e não resolveu']).texto, 'DESCARTADO: TECLADO');
+  assert.strictEqual(preverPecas('webcam ruim', ['webcam ok', 'webcam com defeito de novo']).texto, 'WEBCAM (CONFIRMADA)');
+  assert.deepStrictEqual(pecasDaColuna('CHIP DA BIOS (SUSPEITA), TELA (PROVÁVEL) | TROCADO: WEBCAM'), ['CHIP DA BIOS', 'TELA']);
+});
+
+test('observações: célula curta, nota completa, texto antigo aproveitado', () => {
+  const longo = 'Liga, mostra o logo e fica com tela preta, F2 não abre a BIOS. Chip retirado.';
+  assert.strictEqual(resumoObs(longo), 'Liga, mostra o logo e fica com tela preta, F2 não abre a BIOS…');
+  assert.strictEqual(resumoObs('troquei a tela'), 'troquei a tela');
+  const obs = [{ data: '04/11/2026', tecnico: 'JOÃO PEDRO', texto: longo }, { data: '05/11/2026', tecnico: 'MARCOS', texto: 'Regravei a BIOS, não resolveu.' }];
+  assert.strictEqual(celulaNotas(obs), '05/11 · MARCOS · Regravei a BIOS, não resolveu\n04/11 · JOÃO PEDRO · Liga, mostra o logo e fica com tela preta, F2 não abre a BIOS…');
+  assert.match(notaCompleta(obs), /^04\/11\/2026 · JOÃO PEDRO\nLiga.*Chip retirado\.\n\n05\/11\/2026 · MARCOS\n/s);
+  assert.deepStrictEqual(notasAntigas('04/11/2026 (ANA): testei\n05/11/2026: troquei', '', 'JOÃO'),
+    [{ data: '04/11/2026', tecnico: 'ANA', texto: 'testei' }, { data: '05/11/2026', tecnico: 'JOÃO', texto: 'troquei' }]);
+  assert.deepStrictEqual(notasAntigas('texto solto', '05/11/2026', 'JOÃO'), [{ data: '05/11/2026', tecnico: 'JOÃO', texto: 'texto solto' }]);
 });
 
 test('notebooks do mesmo modelo que se completam', () => {
   const c = combinacoes([
-    { MODELO: 'E1504F', SERIAL: 'A1', 'PEÇAS COM DEFEITO': 'WEBCAM', 'SITUAÇÃO': 'EM ANÁLISE' },
-    { MODELO: 'e1504-f', SERIAL: 'B2', 'PEÇAS COM DEFEITO': 'TELA', 'SITUAÇÃO': 'EM ANÁLISE' },
-    { MODELO: 'X515J', SERIAL: 'C3', 'PEÇAS COM DEFEITO': 'TELA', 'SITUAÇÃO': 'EM ANÁLISE' },
-    { MODELO: 'E1504F', SERIAL: 'D4', 'PEÇAS COM DEFEITO': 'PLACA-MÃE', 'SITUAÇÃO': 'SUCATA' }
+    { MODELO: 'E1504F', SERIAL: 'A1', 'PEÇAS': 'WEBCAM (PROVÁVEL)', 'SITUAÇÃO': 'EM ANÁLISE' },
+    { MODELO: 'e1504-f', SERIAL: 'B2', 'PEÇAS': 'TELA (SUSPEITA) | TROCADO: USB', 'SITUAÇÃO': 'EM ANÁLISE' },
+    { MODELO: 'X515J', SERIAL: 'C3', 'PEÇAS': 'TELA', 'SITUAÇÃO': 'EM ANÁLISE' },
+    { MODELO: 'E1504F', SERIAL: 'D4', 'PEÇAS': 'PLACA-MÃE (CONFIRMADA)', 'SITUAÇÃO': 'SUCATA' }
   ]);
   assert.match(c[0], /B2 \(par: dá TELA, recebe WEBCAM\)/);
   assert.match(c[0], /D4 \(sucata: recebe WEBCAM\)/);
@@ -81,11 +106,6 @@ test('nota do outro projeto', () => {
   assert.strictEqual(n.pecas, 'tela, webcam');
   assert.strictEqual(n.entradas.length, 2);
   assert.strictEqual(n.entradas[0].data, '05/11/2026');
-  const j1 = juntarNotas('', n.entradas);
-  assert.strictEqual(j1.novas, 2);
-  const j2 = juntarNotas(j1.texto, n.entradas);
-  assert.strictEqual(j2.novas, 0);
-  assert.strictEqual(j2.texto, j1.texto);
 });
 
 test('leitura da etiqueta: EAN com dígito, serial e marca pelo serial', () => {

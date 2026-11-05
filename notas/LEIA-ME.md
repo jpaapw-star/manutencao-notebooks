@@ -1,6 +1,6 @@
 # Anotações do João Pedro
 
-Um arquivo por notebook: `<SERIAL>.md`. O Claude do outro projeto escreve aqui; a cada push o GitHub manda as anotações para o app, que coloca na linha do notebook (coluna "O QUE FOI FEITO / NOTAS").
+Um arquivo por notebook: `<SERIAL>.md`. O Claude do outro projeto escreve aqui; a cada push o GitHub manda as anotações para o app, que grava cada entrada como uma observação (aba OBSERVAÇÕES, com data e técnico, nada é apagado) e mostra o resumo na coluna "O QUE FOI FEITO / NOTAS".
 
 ```
 serial: PE0FXEYD
