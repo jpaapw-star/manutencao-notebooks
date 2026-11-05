@@ -163,8 +163,8 @@ function acharItem(chave){ return S.itens.filter(function(i){ return (i._aba + '
 function mostrarMontagens(){
   $('montagens').innerHTML = S.montagens.map(function(m){
     var de = {};
-    m.recebe.forEach(function(r){ (de[r.de] = de[r.de] || { sucata: r.sucata, pecas: [] }).pecas.push(r.peca); });
-    var l2 = Object.keys(de).map(function(s){ return de[s].pecas.join(', ') + ' ← ' + s + (de[s].sucata ? ' (sucata)' : ''); }).join('\n');
+    m.recebe.forEach(function(r){ (de[r.de] = de[r.de] || { sucata: r.sucata, outro: r.outroModelo, pecas: [] }).pecas.push(r.peca); });
+    var l2 = Object.keys(de).map(function(s){ return de[s].pecas.join(', ') + ' ← ' + s + (de[s].sucata ? ' (sucata)' : '') + (de[s].outro ? ' · ' + de[s].outro : ''); }).join('\n');
     var n = Object.keys(de).length;
     return '<div class="monta" style="border-left:6px solid ' + esc(m.cor || 'transparent') + ';padding-left:12px"><button data-l="' + esc(m.aba + ':' + m.linha) + '">' + esc(m.modelo) + ' · ' + esc(m.serial) + '</button>' +
       '<div class="l2">' + esc(n === 1 ? '1 doador' : n + ' doadores') + '\n' + esc(l2) + '</div></div>';

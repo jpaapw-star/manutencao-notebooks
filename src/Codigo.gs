@@ -30,7 +30,7 @@ var COLUNAS_AUTO = ['COMBINA COM'];
 var NOTAS = 'O QUE FOI FEITO / NOTAS';
 var COLUNAS_DO_APP = ['PEÇAS', NOTAS, 'COMBINA COM'];
 var OBS = 'OBSERVAÇÕES';
-var VERSAO_PLANILHA = '8';
+var VERSAO_PLANILHA = '9';
 var DATAS = ['DATA ENTRADA', 'ÚLTIMA ATUALIZAÇÃO'];
 // Produtos em garantia ficam na aba GARANTIA e os de sucata na aba SUCATA (mesmas colunas), não em APARELHOS.
 var ABA_GARANTIA = 'GARANTIA';
@@ -40,6 +40,11 @@ var ABAS_DADOS = [ABA, ABA_GARANTIA, ABA_SUCATA];
 var ABA_PECAS = 'PEÇAS';
 var CAB_PECAS = ['DATA COMPRA', 'PEÇA', 'CÓDIGO DA PEÇA', 'SERVE NOS MODELOS', 'VALOR', 'LINK', 'SITUAÇÃO', 'USADA EM (SERIAL)',
   'MODELOS COMPATÍVEIS (PESQUISA)', 'APARELHOS QUE PRECISAM'];
+// Peças que servem em qualquer modelo (padrão). O João pode mudar na aba LISTAS, coluna PEÇAS UNIVERSAIS.
+var PECAS_UNIVERSAIS = ['MEMÓRIA', 'SSD', 'WI-FI'];
+// Aba COMPATIBILIDADE: modelos diferentes que usam a mesma peça (o João escreve ou o app pesquisa).
+var ABA_COMPAT = 'COMPATIBILIDADE';
+var CAB_COMPAT = ['PEÇA', 'MODELOS QUE USAM A MESMA PEÇA', 'ORIGEM', 'DATA'];
 // Colunas que saíram de APARELHOS (valor e link agora ficam na aba PEÇAS). Só saem se estiverem vazias.
 var COLUNAS_REMOVIDAS = ['VALOR PEÇAS', 'LINK PEÇA'];
 // Abas que não existem mais (o app apaga se encontrar). Os finalizados continuam em APARELHOS.
@@ -315,13 +320,13 @@ function combinacoes(itens) {
  * Cada peça boa de um doador só é usada uma vez; quem doa não entra como aparelho a montar.
  * Começa pelos que precisam de menos peças. Retorna [{ serial, modelo, recebe: [{peca, de, sucata}] }].
  */
-function planosDeMontagem(itens, estoque) {
+function planosDeMontagem(itens, estoque, compat) {
   var lista = [];
   itens.forEach(function (it, i) {
     var sit = semAcento_(it['SITUAÇÃO']).trim();
     var m = modeloChave_(it.MODELO);
     if (sit === 'FINALIZADO' || !m) return;
-    lista.push({ i: i, m: m, modelo: String(it.MODELO || '').trim(), serial: String(it.SERIAL || '').trim() || ('linha ' + it._linha),
+    lista.push({ i: i, m: m, t: semAcento_(it.TIPO).trim(), modelo: String(it.MODELO || '').trim(), serial: String(it.SERIAL || '').trim() || ('linha ' + it._linha),
       aba: it._aba || '', linha: it._linha, pecas: pecasDaColuna(it['PEÇAS']), sucata: sit === 'SUCATA', usadas: {}, doou: false, montado: false });
   });
   // Peça comprada em estoque também conta como doador (só da peça dela, nos modelos em que serve).
@@ -336,20 +341,24 @@ function planosDeMontagem(itens, estoque) {
   alvos.forEach(function (a) {
     if (a.doou) return;
     var doadores = lista.filter(function (b) {
-      if (b.estoque) return modelosCombinam(a.modelo, b.modelos);
-      return b !== a && b.m === a.m && !b.montado;
+      if (b.estoque) return true;
+      return b !== a && !b.montado && (!a.t || !b.t || a.t === b.t);
     });
+    var serve = function (b, p) {
+      return b.estoque ? pecaServeEstoque(p, a.modelo, b.modelos, compat) : pecaServe(p, a.modelo, b.modelo, compat);
+    };
     var falta = a.pecas.slice(), recebe = [];
     while (falta.length) {
       var melhor = null, cobre = [];
       doadores.forEach(function (b) {
-        var c = falta.filter(function (p) { return (b.oferece ? b.oferece.indexOf(p) >= 0 : b.pecas.indexOf(p) < 0) && !b.usadas[p]; });
+        var c = falta.filter(function (p) { return (b.oferece ? b.oferece.indexOf(p) >= 0 : b.pecas.indexOf(p) < 0) && !b.usadas[p] && serve(b, p); });
         if (!c.length) return;
-        var nota = c.length * 10 + (b.estoque ? 6 : 0) + (b.sucata ? 5 : 0) + Math.min(b.pecas.length, 4);
+        var nota = c.length * 10 + (b.estoque ? 6 : 0) + (b.sucata ? 5 : 0) + (b.m === a.m ? 3 : 0) + Math.min(b.pecas.length, 4);
         if (!melhor || nota > melhor.nota) { melhor = { b: b, nota: nota }; cobre = c; }
       });
       if (!melhor) break;
-      cobre.forEach(function (p) { recebe.push({ peca: p, de: melhor.b.serial, sucata: melhor.b.sucata, comprada: !!melhor.b.estoque, d: melhor.b }); melhor.b.usadas[p] = true; });
+      cobre.forEach(function (p) { recebe.push({ peca: p, de: melhor.b.serial, sucata: melhor.b.sucata, comprada: !!melhor.b.estoque,
+        outroModelo: !melhor.b.estoque && melhor.b.m !== a.m ? melhor.b.modelo : '', d: melhor.b }); melhor.b.usadas[p] = true; });
       falta = falta.filter(function (p) { return cobre.indexOf(p) < 0; });
     }
     if (falta.length) { recebe.forEach(function (r) { delete r.d.usadas[r.peca]; }); return; }
@@ -358,6 +367,38 @@ function planosDeMontagem(itens, estoque) {
     planos.push({ serial: a.serial, modelo: a.modelo, aba: a.aba, linha: a.linha, recebe: recebe });
   });
   return planos;
+}
+
+// ===== Compatibilidade entre modelos =====
+
+function universais_(compat) { return (compat && compat.universais) || PECAS_UNIVERSAIS; }
+
+/** A peça p de um aparelho modeloB serve no modeloA? Mesmo modelo, peça universal ou grupo da aba COMPATIBILIDADE. */
+function pecaServe(p, modeloA, modeloB, compat) {
+  var ka = modeloChave_(modeloA), kb = modeloChave_(modeloB);
+  if (ka && ka === kb) return true;
+  if (universais_(compat).indexOf(p) >= 0) return true;
+  return ((compat && compat.grupos) || []).some(function (g) {
+    return (!g.peca || g.peca === p) && modelosCombinam(modeloA, g.modelos) && modelosCombinam(modeloB, g.modelos);
+  });
+}
+
+/** Peça comprada (lista de modelos em que serve) serve no modeloA? */
+function pecaServeEstoque(p, modeloA, listaModelos, compat) {
+  if (universais_(compat).indexOf(p) >= 0) return true;
+  if (modelosCombinam(modeloA, listaModelos)) return true;
+  return ((compat && compat.grupos) || []).some(function (g) {
+    return (!g.peca || g.peca === p) && modelosCombinam(modeloA, g.modelos) && modelosCombinam(listaModelos, g.modelos);
+  });
+}
+
+/** Lê LISTAS (coluna PEÇAS UNIVERSAIS) e a aba COMPATIBILIDADE. */
+function compatDe(universais, linhasCompat) {
+  var u = (universais || []).map(function (x) { return tipoDaPeca(x) || String(x).trim().toUpperCase(); }).filter(String);
+  var grupos = (linhasCompat || []).slice(1).map(function (l) {
+    return { peca: tipoDaPeca(l[0]) || String(l[0] || '').trim().toUpperCase(), modelos: String(l[1] || '') };
+  }).filter(function (g) { return codigosModelo_(g.modelos).length >= 2; });
+  return { universais: u.length ? u : PECAS_UNIVERSAIS, grupos: grupos };
 }
 
 // ===== Peças compradas (aba PEÇAS) =====
@@ -400,12 +441,12 @@ function estoqueDe(linhas) {
 }
 
 /** Aparelhos em aberto que precisam de cada peça comprada (mesmo tipo e modelo compatível). */
-function aparelhosParaPecas(estoque, itens) {
+function aparelhosParaPecas(estoque, itens, compat) {
   return estoque.map(function (e) {
-    if (e.usada || !e.tipo || !e.modelos) return '';
+    if (e.usada || !e.tipo) return '';
     return itens.filter(function (it) {
       var sit = semAcento_(it['SITUAÇÃO']).trim();
-      return sit !== 'FINALIZADO' && sit !== 'SUCATA' && pecasDaColuna(it['PEÇAS']).indexOf(e.tipo) >= 0 && modelosCombinam(it.MODELO, e.modelos);
+      return sit !== 'FINALIZADO' && sit !== 'SUCATA' && pecasDaColuna(it['PEÇAS']).indexOf(e.tipo) >= 0 && pecaServeEstoque(e.tipo, it.MODELO, e.modelos, compat);
     }).map(function (it) { return String(it.SERIAL || '').trim() + (it.MODELO ? ' (' + it.MODELO + ')' : ''); }).join('\n');
   });
 }
@@ -464,6 +505,18 @@ function prepararPlanilha_() {
     dados.forEach(function (x) { if (cabecalho_(x)[j] === nome) x.deleteColumn(j + 1); });
     cab = cabecalho_(aba);
   });
+  // Peças universais (o João pode editar na LISTAS) e aba COMPATIBILIDADE.
+  var ls = ss.getSheetByName('LISTAS');
+  if (ls && cabecalho_(ls).indexOf('PEÇAS UNIVERSAIS') < 0) {
+    var cu = cabecalho_(ls).filter(String).length + 1;
+    ls.getRange(1, cu, PECAS_UNIVERSAIS.length + 1, 1).setValues([['PEÇAS UNIVERSAIS']].concat(PECAS_UNIVERSAIS.map(function (x) { return [x]; })));
+  }
+  if (!ss.getSheetByName(ABA_COMPAT)) {
+    var ca = ss.insertSheet(ABA_COMPAT);
+    ca.getRange(1, 1, 1, CAB_COMPAT.length).setValues([CAB_COMPAT]).setFontWeight('bold');
+    ca.setFrozenRows(1);
+    ca.setColumnWidth(2, 360);
+  }
   // Lista de situações com FINALIZADO.
   var listas = ss.getSheetByName('LISTAS');
   if (listas) {
@@ -532,10 +585,71 @@ function linhasCompativeis(planos, itens) {
       var b = porSerial[s] || {};
       var comprada = /^PEÇA COMPRADA/.test(s);
       out.push({ grupo: g, valores: [g + 1, comprada ? 'PEÇA COMPRADA' : String(b['SITUAÇÃO'] || '').toUpperCase() === 'SUCATA' ? 'DOADOR (SUCATA)' : 'DOADOR', s, b.MODELO || (comprada ? '' : p.modelo),
-        b._aba || (comprada ? 'PEÇAS' : ''), b['SITUAÇÃO'] || (comprada ? 'EM ESTOQUE' : ''), String(b['PEÇAS'] || ''), 'Dá ' + de[s].join(', ') + ' para ' + p.serial] });
+        b._aba || (comprada ? 'PEÇAS' : ''), b['SITUAÇÃO'] || (comprada ? 'EM ESTOQUE' : ''), String(b['PEÇAS'] || ''), 'Dá ' + de[s].join(', ') + ' para ' + p.serial + (b.MODELO && modeloChave_(b.MODELO) !== modeloChave_(p.modelo) ? ' (outro modelo, mesma peça)' : '')] });
     });
   });
   return out;
+}
+
+/** Peças universais (LISTAS) + grupos de modelos da aba COMPATIBILIDADE. */
+function lerCompat_(ss) {
+  var l = listas_(ss);
+  var c = ss.getSheetByName(ABA_COMPAT);
+  var linhas = c && c.getLastRow() > 1 ? c.getRange(1, 1, c.getLastRow(), 2).getValues() : [];
+  return compatDe(l['PEÇAS UNIVERSAIS'], linhas);
+}
+
+/**
+ * Pesquisa (IA do SCAN com busca do Google) quais outros modelos usam a MESMA peça que um modelo em aberto precisa.
+ * Uma pesquisa por modelo+peça (fica guardado), no máximo `limite` por vez. O resultado vira uma linha da aba COMPATIBILIDADE.
+ */
+function pesquisarIrmaos_(ss, limite) {
+  var k = iaChave_();
+  var c = ss.getSheetByName(ABA_COMPAT);
+  if (!k || !c) return 0;
+  var props = PropertiesService.getScriptProperties();
+  var compat = lerCompat_(ss);
+  var feitas = 0, vistos = {};
+  lerTudo_(ss).itens.forEach(function (it) {
+    var sit = semAcento_(it['SITUAÇÃO']).trim();
+    var cod = codigosModelo_(it.MODELO)[0];
+    if (feitas >= limite || !cod || sit === 'FINALIZADO' || sit === 'SUCATA') return;
+    pecasDaColuna(it['PEÇAS']).forEach(function (p) {
+      var chave = 'irm:' + p + ':' + cod;
+      if (feitas >= limite || vistos[chave] || compat.universais.indexOf(p) >= 0 || props.getProperty(chave)) return;
+      vistos[chave] = true;
+      var ja = compat.grupos.some(function (g) { return g.peca === p && modelosCombinam(it.MODELO, g.modelos); });
+      if (ja) { props.setProperty(chave, '1'); return; }
+      var r = pesquisarIA_(k, 'Notebook modelo "' + it.MODELO + '"' + (it.MARCA ? ' da marca ' + it.MARCA : '') + '. Pesquise quais OUTROS modelos de notebook usam ' +
+        'exatamente a mesma peça "' + p + '" (mesmo part number, encaixe e conector). Responda só com os códigos de modelo separados por vírgula, ' +
+        'sem texto extra. Se não achar nada confiável, responda NADA.');
+      if (r === null) return;
+      props.setProperty(chave, '1');
+      feitas++;
+      var lista = codigosModelo_(r).filter(function (x) { return !modelosCombinam(x, it.MODELO); });
+      if (lista.length) c.appendRow([p, [cod].concat(lista).join(', '), 'PESQUISA', new Date()]);
+    });
+  });
+  return feitas;
+}
+
+/** Pergunta curta à IA com busca do Google; devolve o texto, '' se respondeu NADA, null se não respondeu. */
+function pesquisarIA_(k, pergunta) {
+  for (var i = 0; i < IA_MODELOS.length; i++) {
+    var r;
+    try {
+      r = UrlFetchApp.fetch(IA_URL + IA_MODELOS[i] + ':generateContent?key=' + encodeURIComponent(k), {
+        method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+        payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: pergunta }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0 } })
+      });
+    } catch (x) { continue; }
+    if (r.getResponseCode() !== 200) continue;
+    try {
+      var t = JSON.parse(r.getContentText()).candidates[0].content.parts.map(function (p) { return p.text || ''; }).join(' ').trim();
+      return /^NADA\b/i.test(t) ? '' : t;
+    } catch (x) { continue; }
+  }
+  return null;
 }
 
 function lerEstoque_(ss) {
@@ -545,11 +659,11 @@ function lerEstoque_(ss) {
 }
 
 /** Preenche APARELHOS QUE PRECISAM na aba PEÇAS (só grava o que mudou). */
-function escreverPecas_(ss, d, est) {
+function escreverPecas_(ss, d, est, compat) {
   var pc = ss.getSheetByName(ABA_PECAS);
   if (!pc || !est.length) return;
   var col = CAB_PECAS.indexOf('APARELHOS QUE PRECISAM') + 1;
-  var precisam = aparelhosParaPecas(est, d.itens);
+  var precisam = aparelhosParaPecas(est, d.itens, compat);
   est.forEach(function (e, k) {
     var r = pc.getRange(e.linha, col);
     if (String(r.getValue()) !== precisam[k]) r.setValue(precisam[k]);
@@ -568,8 +682,8 @@ function coresDosGrupos(planos) {
 }
 
 /** Reescreve a aba COMPATÍVEIS (só quando mudou): cada grupo com uma cor. */
-function escreverCompativeis_(ss, itens, est) {
-  var linhas = linhasCompativeis(planosDeMontagem(itens, est), itens);
+function escreverCompativeis_(ss, itens, est, compat) {
+  var linhas = linhasCompativeis(planosDeMontagem(itens, est, compat), itens);
   var assinatura = JSON.stringify(linhas);
   var cache = CacheService.getScriptCache();
   var aba = ss.getSheetByName(COMPATIVEIS);
@@ -661,12 +775,13 @@ function garantirGatilho_() {
 /** Gatilho de edição da planilha (roda com a conta do dono). */
 function aoEditar(e) {
   var nome = e && e.range ? e.range.getSheet().getName() : '';
-  if (nome !== ABA_PECAS) return;
+  if ([ABA_PECAS, ABA_COMPAT, 'LISTAS'].indexOf(nome) < 0) return;
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return;
   try {
     var ss = planilha_();
     pesquisarPecas_(ss, 3);
+    pesquisarIrmaos_(ss, 2);
     recalcular_(ss);
   } finally { lock.releaseLock(); }
 }
@@ -692,25 +807,11 @@ function pesquisarPecas_(ss, limite) {
 }
 
 function pesquisarModelos_(k, peca, codigo) {
-  var pergunta = 'Peça de notebook: "' + peca + '", código/part number "' + codigo + '". Pesquise e liste os códigos de modelo de notebook ' +
+  var t = pesquisarIA_(k, 'Peça de notebook: "' + peca + '", código/part number "' + codigo + '". Pesquise e liste os códigos de modelo de notebook ' +
     'em que essa peça serve (ex.: E1504FA, X1504ZA, 15IRH8). Responda só com os códigos separados por vírgula, sem texto extra. ' +
-    'Se não achar nada confiável, responda NADA.';
-  for (var i = 0; i < IA_MODELOS.length; i++) {
-    var r;
-    try {
-      r = UrlFetchApp.fetch(IA_URL + IA_MODELOS[i] + ':generateContent?key=' + encodeURIComponent(k), {
-        method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-        payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: pergunta }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0 } })
-      });
-    } catch (x) { continue; }
-    if (r.getResponseCode() !== 200) continue;
-    try {
-      var t = JSON.parse(r.getContentText()).candidates[0].content.parts.map(function (p) { return p.text || ''; }).join(' ').trim();
-      if (/^NADA\b/i.test(t)) return '';
-      return codigosModelo_(t).filter(function (x, n, a) { return a.indexOf(x) === n; }).slice(0, 30).join(', ');
-    } catch (x) { continue; }
-  }
-  return null;
+    'Se não achar nada confiável, responda NADA.');
+  if (t === null) return null;
+  return codigosModelo_(t).filter(function (x, n, a) { return a.indexOf(x) === n; }).slice(0, 30).join(', ');
 }
 
 function lerItens_(aba) {
@@ -827,9 +928,9 @@ function recalcular_(ss) {
       if ((notas[it._aba][it._linha - 2] || [''])[0] !== n) aba.getRange(it._linha, cN + 1).setNote(n);
     }
   });
-  var est = lerEstoque_(ss);
-  escreverCompativeis_(ss, d.itens, est);
-  escreverPecas_(ss, d, est);
+  var est = lerEstoque_(ss), compat = lerCompat_(ss);
+  escreverCompativeis_(ss, d.itens, est, compat);
+  escreverPecas_(ss, d, est, compat);
   if (cC < 0) return;
   var comb = combinacoes(d.itens);
   d.itens.forEach(function (it, i) {
@@ -860,10 +961,10 @@ function apiInicio() {
   });
   var mapa = lerObs_(ss);
   itens.forEach(function (it) { it._obs = obsParaTela_(obsDoItem_(mapa, it)); });
-  var est = lerEstoque_(ss);
-  var montagens = planosDeMontagem(d.itens, est);
+  var est = lerEstoque_(ss), compat = lerCompat_(ss);
+  var montagens = planosDeMontagem(d.itens, est, compat);
   itens.forEach(function (it) {
-    it._compradas = est.filter(function (e) { return !e.usada && e.tipo && pecasDaColuna(it['PEÇAS']).indexOf(e.tipo) >= 0 && modelosCombinam(it.MODELO, e.modelos); })
+    it._compradas = est.filter(function (e) { return !e.usada && e.tipo && pecasDaColuna(it['PEÇAS']).indexOf(e.tipo) >= 0 && pecaServeEstoque(e.tipo, it.MODELO, e.modelos, compat); })
       .map(function (e) { return e.peca + (e.codigo ? ' · ' + e.codigo : ''); });
   });
   montagens.forEach(function (m, g) { m.cor = CORES_GRUPOS[g % CORES_GRUPOS.length]; });
@@ -1123,7 +1224,7 @@ function aplicarNota_(n) {
 /** Gatilho a cada SINCRONIZAR_HORAS: o que já passou no controle de qualidade vira FINALIZADO. */
 function sincronizarQualidade() {
   prepararPlanilha_();
-  try { pesquisarPecas_(planilha_(), 5); } catch (x) { console.log('pesquisa de peças: ' + x); }
+  try { pesquisarPecas_(planilha_(), 5); pesquisarIrmaos_(planilha_(), 6); } catch (x) { console.log('pesquisa de peças: ' + x); }
   var q = SpreadsheetApp.openById(PLANILHAS.QUALIDADE).getSheetByName(QUALIDADE_ABA);
   if (!q) throw new Error('Aba ' + QUALIDADE_ABA + ' não encontrada no controle de qualidade.');
   var fin = seriaisFinalizados(q.getDataRange().getValues(), FINALIZA_SO_APROVADO);
@@ -1159,5 +1260,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }

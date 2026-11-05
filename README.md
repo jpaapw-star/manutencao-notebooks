@@ -23,3 +23,9 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 - Cada observação (app, outro projeto ou controle de qualidade) vira uma linha na aba **OBSERVAÇÕES** com data, técnico e texto completo. Nada é apagado.
 - A célula **O QUE FOI FEITO / NOTAS** mostra uma linha curta por observação (`05/11 · TÉCNICO · resumo`), a mais nova em cima; o texto completo fica na nota da célula (passe o mouse) e no app.
 - A coluna **PEÇAS** é a previsão automática, sem IA: lê o defeito do teste e depois cada observação em ordem. Uma observação nova pode confirmar, levantar suspeita, dizer que a peça foi trocada ou desmentir ("mostra o logo" descarta a tela, "troquei e não resolveu" descarta a peça). Formato: `CHIP DA BIOS (SUSPEITA) | TROCADO: WEBCAM | DESCARTADO: TELA`.
+
+## Peças universais e modelos que compartilham peça (1.5.0)
+
+- **PEÇAS UNIVERSAIS** (aba LISTAS): peças que servem em qualquer modelo (padrão: MEMÓRIA, SSD, WI-FI). Entram na montagem entre modelos diferentes.
+- **COMPATIBILIDADE**: cada linha diz que modelos diferentes usam a mesma peça (ex.: TELA · E1504FA, X1504ZA). O João pode escrever, e o app pesquisa sozinho (IA com busca do Google, uma vez por modelo+peça, a cada 2 horas e quando a planilha é editada).
+- A montagem, a aba COMPATÍVEIS, as peças compradas e o app usam essas regras.

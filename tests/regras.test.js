@@ -197,3 +197,25 @@ test('peças compradas: tipo, modelos compatíveis e aparelhos que precisam', ()
   assert.strictEqual(p[0].recebe[0].de, 'PEÇA COMPRADA NV156FHM');
   assert.ok(p[0].recebe[0].comprada);
 });
+
+test('compatibilidade: peça universal e modelos que compartilham peça', () => {
+  const { pecaServe, compatDe } = m.exports;
+  const compat = compatDe(['Memória', 'SSD'], [['PEÇA', 'MODELOS'], ['Tela', 'E1504FA, X1504ZA'], ['Teclado', 'X515']]);
+  assert.deepStrictEqual(compat.universais, ['MEMÓRIA', 'SSD']);
+  assert.strictEqual(compat.grupos.length, 1);
+  assert.ok(pecaServe('SSD', 'E1504FA', 'IDEAPAD 15IRH8', compat));
+  assert.ok(pecaServe('TELA', 'VIVOBOOK E1504FA', 'VIVOBOOK X1504ZA', compat));
+  assert.ok(!pecaServe('TECLADO', 'E1504FA', 'X1504ZA', compat));
+  const itens = [
+    { MODELO: 'VIVOBOOK E1504FA', SERIAL: 'A', 'PEÇAS': 'TELA, SSD', 'SITUAÇÃO': 'EM REPARO', TIPO: 'NOTEBOOK', _linha: 2 },
+    { MODELO: 'VIVOBOOK X1504ZA', SERIAL: 'B', 'PEÇAS': 'PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', TIPO: 'NOTEBOOK', _linha: 3 },
+    { MODELO: 'IDEAPAD 15IRH8', SERIAL: 'C', 'PEÇAS': 'TELA', 'SITUAÇÃO': 'SUCATA', TIPO: 'NOTEBOOK', _linha: 4 }
+  ];
+  const p = planosDeMontagem(itens, [], compat);
+  assert.strictEqual(p.length, 1);
+  const de = {}; p[0].recebe.forEach(r => { de[r.peca] = r.de; });
+  assert.deepStrictEqual(de, { TELA: 'B', SSD: 'B' });
+  assert.strictEqual(p[0].recebe[0].outroModelo, 'VIVOBOOK X1504ZA');
+  // sem a tabela, tela de outro modelo não serve
+  assert.strictEqual(planosDeMontagem(itens, [], compatDe(['SSD'], [])).length, 0);
+});
