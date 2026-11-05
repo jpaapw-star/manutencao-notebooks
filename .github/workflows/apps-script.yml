@@ -76,9 +76,32 @@ jobs:
             DEP=$(clasp deployments | grep -v '@HEAD' | grep -o 'AKfyc[A-Za-z0-9_-]*' | head -1 || true)
           fi
           echo "App da Web: https://script.google.com/macros/s/$DEP/exec" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Site próprio do app (GitHub Pages): a mesma tela, falando com o app sem cookies.
+          mkdir -p site
+          sed "s#<!--SITE-->#<title>Manutenção</title><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><script>window.API_URL='https://script.google.com/macros/s/$DEP/exec';</script>#" src/Index.html > site/index.html
+          touch site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
       - name: Apagar credenciais
         if: always()
         run: rm -f ~/.clasprc.json src/00_Segredos.gs
+
+  site:
+    needs: enviar
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publicar.outputs.page_url }}
+    steps:
+      - id: publicar
+        uses: actions/deploy-pages@v4
+      - run: echo "Site do app: ${{ steps.publicar.outputs.page_url }}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   notas:
     needs: [testes, enviar]

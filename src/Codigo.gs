@@ -1187,6 +1187,16 @@ function lerNota(texto) {
 function doPost(e) {
   var corpo = {};
   try { corpo = JSON.parse(e.postData.contents); } catch (x) { return json_({ ok: false, erro: 'JSON inválido' }); }
+  // Chamadas do site do app (endereço próprio no GitHub Pages): mesmas funções da tela, sem login.
+  if (corpo.api) {
+    var API = { apiInicio: apiInicio, apiBuscar: apiBuscar, apiPorEan: apiPorEan, apiIaLigada: apiIaLigada,
+      apiLerComIA: apiLerComIA, apiSalvar: apiSalvar, apiSincronizar: apiSincronizar };
+    if (!API[corpo.api]) return json_({ ok: false, erro: 'função desconhecida' });
+    try {
+      prepararPlanilha_();
+      return json_({ ok: true, r: API[corpo.api].apply(null, corpo.args || []) });
+    } catch (x) { return json_({ ok: false, erro: String(x.message || x) }); }
+  }
   var chave = (typeof SEGREDOS !== 'undefined' && SEGREDOS.notasChave) || '';
   if (!chave || corpo.chave !== chave) return json_({ ok: false, erro: 'chave' });
   prepararPlanilha_();

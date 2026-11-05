@@ -4,6 +4,7 @@
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--SITE-->
 <style>
   :root { --fundo:#fff; --cartao:#f2f2f2; --linha:#e3e3e3; --texto:#000; --fraco:#6e6e6e; --botao:#000; --botaoTexto:#fff; }
   @media (prefers-color-scheme: dark) {
@@ -109,8 +110,18 @@ function aviso(t){ var a=$('aviso'); a.textContent=t; a.classList.add('on'); cle
 function norm(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/O/g,'0'); }
 function sem(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase(); }
 function chamar(fn, args, ok, erro){
-  var r = google.script.run.withSuccessHandler(ok).withFailureHandler(function(e){ (erro||function(){})(e); aviso('Erro: ' + (e && e.message || e)); });
-  r[fn].apply(r, args || []);
+  var falhou = function(e){ (erro||function(){})(e); aviso('Erro: ' + (e && e.message || e)); };
+  if (window.google && google.script && google.script.run) {
+    var r = google.script.run.withSuccessHandler(ok).withFailureHandler(falhou);
+    r[fn].apply(r, args || []);
+    return;
+  }
+  // Site próprio (GitHub Pages): fala com o app sem cookies, então a conta Google do celular não atrapalha.
+  fetch(window.API_URL, { method: 'POST', credentials: 'omit', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ api: fn, args: args || [] }) })
+    .then(function(x){ return x.json(); })
+    .then(function(d){ if (d && d.ok) ok(d.r); else falhou(new Error(d && d.erro || 'sem resposta')); })
+    .catch(falhou);
 }
 
 function carregar(depois){
