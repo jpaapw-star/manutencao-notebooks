@@ -29,3 +29,8 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 - **PEÇAS UNIVERSAIS** (aba LISTAS): peças que servem em qualquer modelo (padrão: MEMÓRIA, SSD, WI-FI). Entram na montagem entre modelos diferentes.
 - **COMPATIBILIDADE**: cada linha diz que modelos diferentes usam a mesma peça (ex.: TELA · E1504FA, X1504ZA). O João pode escrever, e o app pesquisa sozinho (IA com busca do Google, uma vez por modelo+peça, a cada 2 horas e quando a planilha é editada).
 - A montagem, a aba COMPATÍVEIS, as peças compradas e o app usam essas regras.
+
+### Como a parte de peças pensa (1.8.0)
+- **Previsão da peça com defeito:** regras com um vocabulário maior. Na aba LISTAS › PALAVRAS DAS PEÇAS o João ensina palavras novas ("TELA: PAINEL, MONITOR"). Quando as regras não acham nada, a IA lê o defeito uma vez (sem internet), marca a peça como "SUSPEITA · IA" e escreve na LISTAS a palavra que usou, com "(IA)", para as regras aprenderem.
+- **Conferência da pesquisa:** cada pesquisa fica anotada na célula com o código e a data. Se o código mudar, pesquisa de novo. "NÃO ACHEI" é pesquisado de novo depois de 15 dias. Se a pesquisa não citar os modelos de SERVE NOS MODELOS, aparece "CONFERIR:". Código achado pela IA sem nenhuma página que o confirme ganha o aviso "NÃO CONFIRMADO".
+- **Medida e conector:** coluna MEDIDA / CONECTOR na aba PEÇAS (polegadas, pinos, DDR, tipo de SSD), lida do nome da peça ou pesquisada. A peça só é sugerida quando a medida bate com o que está escrito no aparelho; se o aparelho não diz a medida, ela é sugerida igual.
