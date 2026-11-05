@@ -30,10 +30,12 @@ var COLUNAS_AUTO = ['COMBINA COM'];
 var NOTAS = 'O QUE FOI FEITO / NOTAS';
 var COLUNAS_DO_APP = ['PEÇAS', NOTAS, 'COMBINA COM'];
 var OBS = 'OBSERVAÇÕES';
-var VERSAO_PLANILHA = '4';
+var VERSAO_PLANILHA = '5';
 var DATAS = ['DATA ENTRADA', 'ÚLTIMA ATUALIZAÇÃO'];
 var VISTAS = { GARANTIA: ['ENVIADO PARA GARANTIA', 'AGUARDANDO NF'], 'PEÇAS': ['AGUARDANDO PEÇA', 'PEÇA PEDIDA'],
-  SUCATA: ['SUCATA'], FINALIZADOS: ['FINALIZADO'] };
+  SUCATA: ['SUCATA'] };
+// Abas que não existem mais (o app apaga se encontrar). Os finalizados continuam em APARELHOS.
+var ABAS_REMOVIDAS = ['FINALIZADOS'];
 var HISTORICO = 'HISTÓRICO';
 
 // ===== Funções puras (testadas em Node) =====
@@ -309,8 +311,10 @@ function prepararPlanilha_() {
   if (cache.get('pronta') === VERSAO_PLANILHA) return;
   var ss = planilha_();
   var aba = abaPrincipal_(ss);
-  var meus = ss.getSheetByName('MEUS');
-  if (meus) ss.deleteSheet(meus);
+  ['MEUS'].concat(ABAS_REMOVIDAS).forEach(function (nome) {
+    var velha = ss.getSheetByName(nome);
+    if (velha) ss.deleteSheet(velha);
+  });
   var cab = cabecalho_(aba);
   // A previsão das peças agora fica na coluna PEÇAS.
   var velhaP = cab.indexOf('PEÇAS COM DEFEITO');

@@ -3,7 +3,7 @@
 App da Web (Google Apps Script) para os técnicos acompanharem os aparelhos em manutenção, em cima da planilha **MANUTENÇÃO NOTEBOOKS (NOVA)**.
 
 - Só o dono edita a planilha. Os técnicos usam o app (que grava em nome do dono) e podem só **ver** a planilha.
-- Tudo fica na aba **APARELHOS**. As abas GARANTIA, PEÇAS, SUCATA e FINALIZADOS se montam sozinhas, e o RESUMO conta por situação.
+- Tudo fica na aba **APARELHOS**. As abas GARANTIA, PEÇAS e SUCATA se montam sozinhas (os finalizados ficam em APARELHOS, com a situação FINALIZADO), e o RESUMO conta por situação.
 - **Peças com defeito**: o app tira da descrição do teste (sem IA). Ex.: "tela não dá imagem e webcam não funciona" → TELA, WEBCAM. Dá para corrigir à mão.
 - **Combina com**: aparelhos do mesmo modelo que se completam (um tem boa a peça que falta no outro). Aparece na coluna COMBINA COM e no filtro "⇄ Combinam" do app.
 - **Controle de qualidade**: a cada 2 horas o app confere a planilha CONTROLE DE QUALIDADE INFORMATICA EMANX (só leitura). Serial aprovado lá vira **FINALIZADO** aqui, mesmo se o técnico esqueceu.
