@@ -23,6 +23,13 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+      - name: Conferir se o app abre sem login
+        continue-on-error: true
+        run: |
+          URL="https://script.google.com/macros/s/AKfycbyJartOZ2D2KeLQ_IFelaF1pemHf1Xun0MlglVAE9UDTeQM8e847r32Yxfis3VL5BClsg/exec"
+          curl -sL -A "Mozilla/5.0 (Linux; Android 14) Mobile" -o pagina.html -w "HTTP %{http_code} | final: %{url_effective}\n" "$URL" | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -o '<title>[^<]*</title>' pagina.html | head -1 | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -o 'Não foi possível abrir o arquivo\|unable to open the file\|Manutenção' pagina.html | sort | uniq -c | tee -a "$GITHUB_STEP_SUMMARY"
 
   enviar:
     needs: testes
