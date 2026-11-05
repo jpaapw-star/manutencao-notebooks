@@ -310,7 +310,7 @@ function apiInicio() {
     var p = String(it['ÚLTIMA ATUALIZAÇÃO'] || '').split('/');
     return p.length === 3 && new Date(+p[2], +p[1] - 1, +p[0]) >= limite;
   });
-  return { listas: listas_(ss), itens: itens, colunas: d.cab, planilha: ss.getUrl() };
+  return { listas: listas_(ss), itens: itens, colunas: d.cab, planilha: ss.getUrl(), ia: !!iaChave_() };
 }
 
 /** Busca um aparelho pelo serial (em toda a planilha). */
@@ -320,6 +320,62 @@ function apiBuscar(serial) {
   var d = lerItens_(abaPrincipal_(planilha_()));
   var achados = d.itens.filter(function (it) { return normalizarSerial(it.SERIAL) === n; });
   return achados.length ? achados[achados.length - 1] : null;
+}
+
+// ===== IA do SCAN (Gemini): lê a etiqueta pela foto quando o código de barras não basta =====
+
+var IA_MODELOS = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-flash-lite-latest', 'gemini-flash-latest'];
+var IA_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
+
+function iaChave_() { return (typeof SEGREDOS !== 'undefined' && SEGREDOS.iaChave) || ''; }
+
+/** Esta publicação tem a IA ligada? (a tela só oferece a leitura com IA quando sim) */
+function apiIaLigada() { return !!iaChave_(); }
+
+/**
+ * Lê a foto da etiqueta com a IA e devolve { SERIAL, EAN, MARCA, MODELO, DESCRIÇÃO } (vazio = não achou).
+ * jaLido: o que o código de barras já leu (vai como dica, a IA só confirma/completa).
+ */
+function apiLerComIA(base64, jaLido) {
+  var k = iaChave_();
+  if (!k) return { erro: 'A IA não está ligada nesta publicação.' };
+  var dica = jaLido && (jaLido.serial || jaLido.ean) ? ' Já lido pelo código de barras: serial ' + (jaLido.serial || '?') + ', EAN ' + (jaLido.ean || '?') + '.' : '';
+  var texto = 'Foto da etiqueta de um notebook, console ou acessório em manutenção. Leia o número de série (S/N, SN, Serial), ' +
+    'o EAN/código de barras de 8 a 14 dígitos, a marca, o modelo (código do modelo, ex. E1504F, AG15-51P-39MU, 15IRH10) e uma descrição curta ' +
+    '(tipo, processador, memória, armazenamento, se aparecerem). Copie exatamente o que está impresso; não invente. Deixe vazio o que não aparece.' + dica;
+  var esquema = { type: 'OBJECT', properties: { serial: { type: 'STRING' }, ean: { type: 'STRING' }, marca: { type: 'STRING' }, modelo: { type: 'STRING' }, descricao: { type: 'STRING' } } };
+  var partes = [{ text: texto }, { inline_data: { mime_type: 'image/jpeg', data: String(base64 || '').replace(/^data:[^,]*,/, '') } }];
+  var erro = '';
+  for (var i = 0; i < IA_MODELOS.length; i++) {
+    var modos = ['minimal', ''];
+    for (var j = 0; j < modos.length; j++) {
+      var cfg = { temperature: 0, responseMimeType: 'application/json', responseSchema: esquema };
+      if (modos[j]) cfg.thinkingConfig = { thinkingLevel: modos[j] };
+      var r;
+      try {
+        r = UrlFetchApp.fetch(IA_URL + IA_MODELOS[i] + ':generateContent?key=' + encodeURIComponent(k), {
+          method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+          payload: JSON.stringify({ contents: [{ role: 'user', parts: partes }], generationConfig: cfg })
+        });
+      } catch (e) { erro = String(e.message || e); break; }
+      var cod = r.getResponseCode();
+      if (cod === 400 && modos[j]) continue;          // modelo não aceita thinkingLevel: tenta sem
+      if (cod !== 200) { erro = IA_MODELOS[i] + ' ' + cod; break; }   // ocupado/limite/sem modelo: próximo
+      try {
+        var t = JSON.parse(r.getContentText()).candidates[0].content.parts[0].text;
+        var o = JSON.parse(t);
+        return {
+          SERIAL: String(o.serial || '').toUpperCase().replace(/\s+/g, ''),
+          EAN: String(o.ean || '').replace(/\D/g, ''),
+          MARCA: String(o.marca || '').toUpperCase(),
+          MODELO: String(o.modelo || '').toUpperCase(),
+          'DESCRIÇÃO': String(o.descricao || '').toUpperCase(),
+          modelo_ia: IA_MODELOS[i]
+        };
+      } catch (e) { erro = 'resposta da IA ilegível'; break; }
+    }
+  }
+  return { erro: 'A IA não respondeu agora (' + erro + '). Tente de novo em alguns segundos.' };
 }
 
 /** O que a planilha já sabe de um EAN (último aparelho com ele): tipo, marca, modelo, descrição. */

@@ -1,6 +1,6 @@
 # Envia src/ para o Apps Script e atualiza o app da Web sempre que a branch main muda.
 # Também manda as anotações de notas/ para o app sempre que elas mudam (em qualquer branch).
-# Configuração única: segredo CLASPRC_JSON (o mesmo dos outros apps). Veja docs/INSTALACAO.md.
+# Configuração única: segredo CLASPRC_JSON (o mesmo dos outros apps). Opcional: GEMINI_API_KEY (a mesma do SCAN) liga a IA da etiqueta.
 name: Apps Script
 
 on:
@@ -36,12 +36,13 @@ jobs:
       - name: Preparar clasp
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           if [ -z "$CLASPRC_JSON" ]; then echo "::error::Falta o segredo CLASPRC_JSON (veja docs/INSTALACAO.md)."; exit 1; fi
           npm install -g @google/clasp@2.4.2
           printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
           CHAVE=$(printf 'notas:%s' "$CLASPRC_JSON" | sha256sum | cut -c1-40)
-          printf 'var SEGREDOS = {"notasChave":"%s"};\n' "$CHAVE" > src/00_Segredos.gs
+          CHAVE="$CHAVE" node -e 'const s={notasChave:process.env.CHAVE};const g=(process.env.GEMINI_API_KEY||"").trim();if(g)s.iaChave=g;require("fs").writeFileSync("src/00_Segredos.gs","var SEGREDOS = "+JSON.stringify(s)+";\n")'
       - name: Criar o projeto do Apps Script (só na primeira vez)
         run: |
           if [ ! -f .clasp.json ]; then

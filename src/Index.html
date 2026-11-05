@@ -102,7 +102,7 @@ function chamar(fn, args, ok, erro){
 
 function carregar(depois){
   chamar('apiInicio', [], function(d){
-    S.listas = d.listas || {}; S.itens = d.itens || [];
+    S.listas = d.listas || {}; S.itens = d.itens || []; S.ia = !!d.ia;
     $('sub').innerHTML = (S.tecnico ? esc(S.tecnico) + ' · <a href="#" id="trocar">trocar</a> · ' : '') + '<a href="' + esc(d.planilha) + '" target="_blank">abrir planilha</a>';
     var t = $('trocar'); if (t) t.onclick = function(e){ e.preventDefault(); pedirNome(); };
     desenhar();
@@ -322,12 +322,13 @@ function lerCodigos(canvas){
 }
 /** Foto → { ean, serial }. */
 function lerEtiqueta(arquivo){
-  return fotoParaCanvas(arquivo).then(lerCodigos).then(function(l){
+  var tela = null;
+  return fotoParaCanvas(arquivo).then(function(c){ tela = c; return lerCodigos(c); }).then(function(l){
     var ean = l.filter(function(c){ return ehEan(c.valor, c.formato); }).map(function(c){ return c.valor.replace(/^0(\d{13})$/, '$1'); })[0] || '';
     var seriais = l.filter(function(c){ return !ehEan(c.valor, c.formato) && pareceSerial(c.valor); }).map(function(c){ return c.valor.toUpperCase(); });
     // Prefere o que parece serial de notebook conhecido; senão o mais comprido.
     seriais.sort(function(a, b){ return (marcaPeloSerial(b) ? 1 : 0) - (marcaPeloSerial(a) ? 1 : 0) || b.length - a.length; });
-    return { ean: ean, serial: seriais[0] || '', outros: seriais.slice(1), codigos: l.length };
+    return { ean: ean, serial: seriais[0] || '', outros: seriais.slice(1), codigos: l.length, canvas: tela };
   });
 }
 function escolherFoto(depois){
@@ -339,27 +340,47 @@ function valorCampo(nome){ var el = $('f_' + nome.replace(/\W/g, '_')); return e
 function porCampo(nome, v, sobrescrever){ var el = $('f_' + nome.replace(/\W/g, '_')); if (el && v && (sobrescrever || !el.value.trim())) el.value = v; }
 /** Preenche o formulário com o que a foto leu e com o que a planilha já sabe desse EAN. */
 function preencherDaEtiqueta(r){
-  if (!r.ean && !r.serial) { aviso('Nenhum código encontrado. Tente mais perto e com luz.'); return; }
+  if (!r.ean && !r.serial && !(S.ia && r.canvas)) { aviso('Nenhum código encontrado. Tente mais perto e com luz.'); return; }
   if (r.serial) porCampo('SERIAL', r.serial, true);
   if (r.ean) porCampo('EAN', r.ean, true);
   porCampo('MARCA', marcaPeloSerial(r.serial));
-  aviso('Lido: ' + [r.serial, r.ean].filter(Boolean).join(' · '));
+  if (r.serial || r.ean) aviso('Lido: ' + [r.serial, r.ean].filter(Boolean).join(' · '));
   if (r.serial) {
     var ja = S.itens.filter(function(i){ return norm(i.SERIAL) === norm(r.serial); })[0];
     if (ja && !S.atual) { aviso('Esse serial já está na lista. Abrindo ele.'); abrir(ja); return; }
   }
-  if (r.ean) chamar('apiPorEan', [r.ean], function(d){
+  var preencher = function(d){
     if (!d) return;
-    ['TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO'].forEach(function(k){ porCampo(k, d[k]); });
+    ['TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO', 'SERIAL', 'EAN'].forEach(function(k){ porCampo(k, d[k]); });
     var sel = $('f_TIPO'); if (sel && d.TIPO && !sel.value) { var o = document.createElement('option'); o.text = d.TIPO; o.selected = true; sel.add(o); }
-  });
+  };
+  // IA do SCAN só quando o código de barras não resolveu (sem serial ou modelo desconhecido).
+  var ia = function(){
+    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO'))) return;
+    var c = r.canvas, k = Math.min(1, 1280 / Math.max(c.width, c.height)), z = document.createElement('canvas');
+    z.width = Math.round(c.width * k); z.height = Math.round(c.height * k); z.getContext('2d').drawImage(c, 0, 0, z.width, z.height);
+    aviso('Lendo o texto da etiqueta com IA…');
+    chamar('apiLerComIA', [z.toDataURL('image/jpeg', 0.8), { serial: valorCampo('SERIAL'), ean: valorCampo('EAN') }], function(d){
+      if (!d || d.erro) { aviso(d && d.erro || 'A IA não leu.'); return; }
+      var tinhaSerial = valorCampo('SERIAL');
+      preencher(d);
+      if (!tinhaSerial && d.SERIAL) {
+        var ja2 = S.itens.filter(function(i){ return norm(i.SERIAL) === norm(d.SERIAL); })[0];
+        if (ja2 && !S.atual) { aviso('Esse serial já está na lista. Abrindo ele.'); abrir(ja2); return; }
+        porCampo('MARCA', marcaPeloSerial(d.SERIAL));
+      }
+      aviso('IA leu: ' + [d.SERIAL, d.MODELO].filter(Boolean).join(' · '));
+    });
+  };
+  if (r.ean) chamar('apiPorEan', [r.ean], function(d){ preencher(d); ia(); }, ia);
+  else ia();
 }
 $('ler').style.display = '';
 $('ler').textContent = 'Foto';
 $('ler').title = 'Foto da etiqueta';
 $('ler').onclick = function(){
   escolherFoto(function(r){
-    if (!r.serial && !r.ean) { aviso('Nenhum código encontrado. Tente mais perto e com luz.'); return; }
+    if (!r.serial && !r.ean && !S.ia) { aviso('Nenhum código encontrado. Tente mais perto e com luz.'); return; }
     var ja = r.serial && S.itens.filter(function(i){ return norm(i.SERIAL) === norm(r.serial); })[0];
     if (ja) { abrir(ja); return; }
     abrir(null); preencherDaEtiqueta(r);

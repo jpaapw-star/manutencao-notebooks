@@ -10,7 +10,9 @@ No repositório: **Settings › Secrets and variables › Actions › New reposi
 | --- | --- |
 | `CLASPRC_JSON` | O mesmo conteúdo usado nos outros apps (Produção por voz, Preço Médio): o arquivo `.clasprc.json` da sua pasta de usuário no Windows, aberto no Bloco de Notas. |
 
-Nunca cole esse valor no chat.
+| `GEMINI_API_KEY` | (opcional, liga a IA da etiqueta) A mesma chave do Google AI Studio usada no SCAN. |
+
+Nunca cole esses valores no chat.
 
 ## 2. Primeira publicação
 
@@ -29,6 +31,10 @@ Abra o link do app **logado na sua conta Google** (a dona da planilha) e aceite 
 - Mande o link do app. Não precisa de senha nem de conta. No iPhone: Safari › Compartilhar › **Adicionar à Tela de Início**.
 - Compartilhe a planilha com os técnicos como **Leitor**.
 - Os nomes dos técnicos ficam na aba LISTAS, coluna TÉCNICO.
+
+## IA da etiqueta (a mesma do SCAN)
+
+Com `GEMINI_API_KEY`, a "Foto da etiqueta" usa a IA **só quando o código de barras não resolveu** (sem serial ou modelo desconhecido). Ela lê o texto impresso e preenche só os campos vazios. Sem a chave, o app funciona igual, só com o código de barras.
 
 ## Bom saber
 
