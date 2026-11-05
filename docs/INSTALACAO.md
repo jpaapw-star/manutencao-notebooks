@@ -23,7 +23,7 @@ Acontece sozinha quando o código entra na `main` (ou em **Actions › Apps Scri
 Abra o link do app **logado na sua conta Google** (a dona da planilha) e aceite o acesso. Se aparecer "O Google não verificou este app", toque em **Avançado › Acessar**. Nessa primeira abertura o app:
 
 - renomeia a aba EQUIPAMENTOS para APARELHOS e apaga a aba MEUS, se ainda existirem;
-- cria as abas FINALIZADOS, HISTÓRICO e OBSERVAÇÕES e a coluna COMBINA COM; a coluna PEÇAS passa a ser a previsão automática das peças com defeito;
+- cria as abas HISTÓRICO e OBSERVAÇÕES e a coluna COMBINA COM; a coluna PEÇAS passa a ser a previsão automática das peças com defeito;
 - liga a conferência automática com o controle de qualidade (a cada 2 horas).
 
 ## 4. Passar para a equipe
