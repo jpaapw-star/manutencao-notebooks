@@ -157,3 +157,18 @@ test('montagem: vários doadores fazem um notebook, cada peça usada uma vez', (
   ]);
   assert.strictEqual(par.length, 1);
 });
+
+test('cada aparelho na sua aba: sucata, garantia ou APARELHOS', () => {
+  const { abaDoItem } = m.exports;
+  assert.strictEqual(abaDoItem({ 'SITUAÇÃO': 'SUCATA', GARANTIA: 'GARANTIA' }), 'SUCATA');
+  assert.strictEqual(abaDoItem({ 'SITUAÇÃO': 'ENVIADO PARA GARANTIA', GARANTIA: '' }), 'GARANTIA');
+  assert.strictEqual(abaDoItem({ 'SITUAÇÃO': 'EM REPARO', GARANTIA: 'SEM GARANTIA' }), 'APARELHOS');
+});
+
+test('previsão: "regravei..., não resolveu" descarta; coluna sem defeito não vira peça', () => {
+  assert.strictEqual(preverPecas('TELA PRETA', ['Chip da BIOS com defeito', 'Regravei o chip da BIOS, não resolveu']).texto, 'TELA (SUSPEITA) | DESCARTADO: CHIP DA BIOS');
+  assert.deepStrictEqual(pecasDaColuna('TROCADO: CHIP DA BIOS | DESCARTADO: TELA'), []);
+  const { coresDosGrupos } = m.exports;
+  const c = coresDosGrupos([{ serial: 'A', recebe: [{ de: 'B' }, { de: 'C' }] }, { serial: 'D', recebe: [{ de: 'E' }] }]);
+  assert.strictEqual(c.A, c.B); assert.strictEqual(c.A, c.C); assert.notStrictEqual(c.A, c.D); assert.strictEqual(c.D, c.E);
+});
