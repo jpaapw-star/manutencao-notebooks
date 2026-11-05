@@ -88,10 +88,10 @@ test('observações: célula curta, nota completa, texto antigo aproveitado', ()
 
 test('notebooks do mesmo modelo que se completam', () => {
   const c = combinacoes([
-    { MODELO: 'E1504F', SERIAL: 'A1', 'PEÇAS': 'WEBCAM (PROVÁVEL)', 'SITUAÇÃO': 'EM ANÁLISE' },
-    { MODELO: 'e1504-f', SERIAL: 'B2', 'PEÇAS': 'TELA (SUSPEITA) | TROCADO: USB', 'SITUAÇÃO': 'EM ANÁLISE' },
-    { MODELO: 'X515J', SERIAL: 'C3', 'PEÇAS': 'TELA', 'SITUAÇÃO': 'EM ANÁLISE' },
-    { MODELO: 'E1504F', SERIAL: 'D4', 'PEÇAS': 'PLACA-MÃE (CONFIRMADA)', 'SITUAÇÃO': 'SUCATA' }
+    { MODELO: 'E1504F', SERIAL: 'A1', DEFEITO: 'WEBCAM (PROVÁVEL)', 'SITUAÇÃO': 'EM ANÁLISE' },
+    { MODELO: 'e1504-f', SERIAL: 'B2', DEFEITO: 'TELA (SUSPEITA) | TROCADO: USB', 'SITUAÇÃO': 'EM ANÁLISE' },
+    { MODELO: 'X515J', SERIAL: 'C3', DEFEITO: 'TELA', 'SITUAÇÃO': 'EM ANÁLISE' },
+    { MODELO: 'E1504F', SERIAL: 'D4', DEFEITO: 'PLACA-MÃE (CONFIRMADA)', 'SITUAÇÃO': 'SUCATA' }
   ]);
   assert.match(c[0], /B2 \(par: dá TELA, recebe WEBCAM\)/);
   assert.match(c[0], /D4 \(sucata: recebe WEBCAM\)/);
@@ -134,11 +134,11 @@ test('garantia: coluna GARANTIA ou situação de garantia', () => {
 
 test('montagem: vários doadores fazem um notebook, cada peça usada uma vez', () => {
   const itens = [
-    { MODELO: 'E1504F', SERIAL: 'ALVO', 'PEÇAS': 'TELA (CONFIRMADA), WEBCAM (PROVÁVEL), TECLADO (SUSPEITA)', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 2 },
-    { MODELO: 'E1504F', SERIAL: 'D1', 'PEÇAS': 'WEBCAM, TECLADO, PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', _linha: 3 },
-    { MODELO: 'E1504F', SERIAL: 'D2', 'PEÇAS': 'TELA, PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', _linha: 4 },
-    { MODELO: 'X515', SERIAL: 'OUTRO', 'PEÇAS': 'TELA', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 5 },
-    { MODELO: 'X515', SERIAL: 'FIM', 'PEÇAS': '', 'SITUAÇÃO': 'FINALIZADO', _linha: 6 }
+    { MODELO: 'E1504F', SERIAL: 'ALVO', DEFEITO: 'TELA (CONFIRMADA), WEBCAM (PROVÁVEL), TECLADO (SUSPEITA)', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 2 },
+    { MODELO: 'E1504F', SERIAL: 'D1', DEFEITO: 'WEBCAM, TECLADO, PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', _linha: 3 },
+    { MODELO: 'E1504F', SERIAL: 'D2', DEFEITO: 'TELA, PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', _linha: 4 },
+    { MODELO: 'X515', SERIAL: 'OUTRO', DEFEITO: 'TELA', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 5 },
+    { MODELO: 'X515', SERIAL: 'FIM', DEFEITO: '', 'SITUAÇÃO': 'FINALIZADO', _linha: 6 }
   ];
   const p = planosDeMontagem(itens);
   assert.strictEqual(p.length, 1);
@@ -152,8 +152,8 @@ test('montagem: vários doadores fazem um notebook, cada peça usada uma vez', (
   assert.ok(l.every(x => x.grupo === 0));
   // Dois que se ajudam também viram grupo; quem já doou não é montado.
   const par = planosDeMontagem([
-    { MODELO: 'A', SERIAL: 'P1', 'PEÇAS': 'TELA', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 2 },
-    { MODELO: 'A', SERIAL: 'P2', 'PEÇAS': 'WEBCAM', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 3 }
+    { MODELO: 'A', SERIAL: 'P1', DEFEITO: 'TELA', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 2 },
+    { MODELO: 'A', SERIAL: 'P2', DEFEITO: 'WEBCAM', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 3 }
   ]);
   assert.strictEqual(par.length, 1);
 });
@@ -187,8 +187,8 @@ test('peças compradas: tipo, modelos compatíveis e aparelhos que precisam', ()
   assert.strictEqual(est.length, 2);
   assert.ok(est[1].usada);
   const itens = [
-    { SERIAL: 'A1', MODELO: 'E1504FA', 'PEÇAS': 'TELA (PROVÁVEL)', 'SITUAÇÃO': 'EM REPARO' },
-    { SERIAL: 'A2', MODELO: 'E1504FA', 'PEÇAS': 'TECLADO', 'SITUAÇÃO': 'EM REPARO' }
+    { SERIAL: 'A1', MODELO: 'E1504FA', DEFEITO: 'TELA (PROVÁVEL)', 'SITUAÇÃO': 'EM REPARO' },
+    { SERIAL: 'A2', MODELO: 'E1504FA', DEFEITO: 'TECLADO', 'SITUAÇÃO': 'EM REPARO' }
   ];
   assert.deepStrictEqual(aparelhosParaPecas(est, itens), ['A1 (E1504FA)', '']);
   const p = planosDeMontagem(itens, est);
@@ -207,9 +207,9 @@ test('compatibilidade: peça universal e modelos que compartilham peça', () => 
   assert.ok(pecaServe('TELA', 'VIVOBOOK E1504FA', 'VIVOBOOK X1504ZA', compat));
   assert.ok(!pecaServe('TECLADO', 'E1504FA', 'X1504ZA', compat));
   const itens = [
-    { MODELO: 'VIVOBOOK E1504FA', SERIAL: 'A', 'PEÇAS': 'TELA, SSD', 'SITUAÇÃO': 'EM REPARO', TIPO: 'NOTEBOOK', _linha: 2 },
-    { MODELO: 'VIVOBOOK X1504ZA', SERIAL: 'B', 'PEÇAS': 'PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', TIPO: 'NOTEBOOK', _linha: 3 },
-    { MODELO: 'IDEAPAD 15IRH8', SERIAL: 'C', 'PEÇAS': 'TELA', 'SITUAÇÃO': 'SUCATA', TIPO: 'NOTEBOOK', _linha: 4 }
+    { MODELO: 'VIVOBOOK E1504FA', SERIAL: 'A', DEFEITO: 'TELA, SSD', 'SITUAÇÃO': 'EM REPARO', TIPO: 'NOTEBOOK', _linha: 2 },
+    { MODELO: 'VIVOBOOK X1504ZA', SERIAL: 'B', DEFEITO: 'PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', TIPO: 'NOTEBOOK', _linha: 3 },
+    { MODELO: 'IDEAPAD 15IRH8', SERIAL: 'C', DEFEITO: 'TELA', 'SITUAÇÃO': 'SUCATA', TIPO: 'NOTEBOOK', _linha: 4 }
   ];
   const p = planosDeMontagem(itens, [], compat);
   assert.strictEqual(p.length, 1);
@@ -270,8 +270,8 @@ test('peça comprada com medida diferente não é sugerida', () => {
   const cab = ['DATA COMPRA', 'PEÇA', 'CÓDIGO DA PEÇA', 'SERVE NOS MODELOS', 'VALOR', 'LINK', 'SITUAÇÃO', 'USADA EM (SERIAL)', 'MODELOS COMPATÍVEIS (PESQUISA)', 'APARELHOS QUE PRECISAM', 'MEDIDA / CONECTOR'];
   const est = estoqueDe([cab, ['', 'Tela LED', 'X1', 'E1504FA', '', '', 'EM ESTOQUE', '', '', '', '15.6" · 30 pinos']]);
   const itens = [
-    { SERIAL: 'A1', MODELO: 'E1504FA', 'SITUAÇÃO': 'EM REPARO', 'PEÇAS': 'TELA (CONFIRMADA)', DEFEITO: 'tela 15.6 quebrada' },
-    { SERIAL: 'B2', MODELO: 'E1504FA', 'SITUAÇÃO': 'EM REPARO', 'PEÇAS': 'TELA (CONFIRMADA)', DEFEITO: 'tela quebrada, conector 40 pinos' }
+    { SERIAL: 'A1', MODELO: 'E1504FA', 'SITUAÇÃO': 'EM REPARO', DEFEITO: 'TELA (CONFIRMADA)', 'DESCRIÇÃO': 'tela 15.6' },
+    { SERIAL: 'B2', MODELO: 'E1504FA', 'SITUAÇÃO': 'EM REPARO', DEFEITO: 'TELA (CONFIRMADA)', 'O QUE FOI FEITO / NOTAS': 'conector 40 pinos' }
   ];
   assert.deepStrictEqual(aparelhosParaPecas(est, itens, null), ['A1 (E1504FA)']);
 });
