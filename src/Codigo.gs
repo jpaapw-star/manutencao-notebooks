@@ -1344,7 +1344,7 @@ function apiInicio() {
   var limite = new Date(Date.now() - 30 * 86400000);
   var itens = d.itens.filter(function (it) {
     var sit = String(it['SITUAÇÃO'] || '').toUpperCase();
-    if (ENCERRADAS.indexOf(sit) < 0) return true;
+    if (ENCERRADAS.indexOf(sit) < 0 || sit === 'SUCATA') return true;   // sucata aparece sempre (aba Sucata do app)
     var p = String(it['ÚLTIMA ATUALIZAÇÃO'] || '').split('/');
     return p.length === 3 && new Date(+p[2], +p[1] - 1, +p[0]) >= limite;
   });

@@ -96,7 +96,7 @@
 <div class="aviso" id="aviso"></div>
 
 <script>
-var S = { listas:{}, itens:[], filtro:'ABERTOS', tecnico:'', atual:null };
+var S = { listas:{}, itens:[], filtro:'ABA:APARELHOS', tecnico:'', atual:null };
 var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
 var CAMPOS = [
   ['SERIAL','text'], ['TIPO','lista'], ['MARCA','lista+'], ['MODELO','text'], ['NF','text'], ['DESCRIÇÃO','text'], ['EAN','text'],
@@ -140,17 +140,21 @@ function situacoes(){ return (S.listas['SITUAÇÃO'] || []).concat(ENCERRADAS.fi
 function desenhar(){
   var abertos = S.itens.filter(function(i){ return ENCERRADAS.indexOf(String(i['SITUAÇÃO']).toUpperCase()) < 0; });
   var cont = {}; S.itens.forEach(function(i){ var s = String(i['SITUAÇÃO']||'').toUpperCase(); cont[s] = (cont[s]||0) + 1; });
-  var chips = [['ABERTOS', 'Em aberto · ' + abertos.length]];
+  // Primeiro as três abas da planilha: Aparelhos, Garantia e Sucata (sem os finalizados).
+  var naAba = function(i, a){ return (i._aba || 'APARELHOS') === a && String(i['SITUAÇÃO']||'').toUpperCase() !== 'FINALIZADO'; };
+  var chips = [['APARELHOS', 'Aparelhos'], ['GARANTIA', 'Garantia'], ['SUCATA', 'Sucata']].map(function(a){
+    return ['ABA:' + a[0], a[1] + ' · ' + S.itens.filter(function(i){ return naAba(i, a[0]); }).length];
+  });
   var comb = abertos.filter(function(i){ return i['COMBINA COM']; }).length;
   if (comb) chips.push(['COMBINA', '⇄ Combinam · ' + comb]);
   if (S.tecnico) chips.push(['MEUS', 'Comigo · ' + abertos.filter(function(i){ return sem(i['TÉCNICO']) === sem(S.tecnico); }).length]);
-  situacoes().forEach(function(s){ if (cont[s]) chips.push([s, s.charAt(0) + s.slice(1).toLowerCase() + ' · ' + cont[s]]); });
+  situacoes().forEach(function(s){ if (cont[s] && s !== 'SUCATA') chips.push([s, s.charAt(0) + s.slice(1).toLowerCase() + ' · ' + cont[s]]); });
   $('chips').innerHTML = chips.map(function(c){ return '<button class="chip' + (S.filtro===c[0]?' on':'') + '" data-f="' + esc(c[0]) + '">' + esc(c[1]) + '</button>'; }).join('');
   Array.prototype.forEach.call($('chips').children, function(b){ b.onclick = function(){ S.filtro = b.getAttribute('data-f'); desenhar(); }; });
   var q = sem($('busca').value).trim(), qn = norm($('busca').value);
   var lista = (q ? S.itens : S.itens.filter(function(i){
     var s = String(i['SITUAÇÃO']||'').toUpperCase();
-    if (S.filtro === 'ABERTOS') return ENCERRADAS.indexOf(s) < 0;
+    if (S.filtro.indexOf('ABA:') === 0) return naAba(i, S.filtro.slice(4));
     if (S.filtro === 'COMBINA') return ENCERRADAS.indexOf(s) < 0 && i['COMBINA COM'];
     if (S.filtro === 'MEUS') return ENCERRADAS.indexOf(s) < 0 && sem(i['TÉCNICO']) === sem(S.tecnico);
     return s === S.filtro;
