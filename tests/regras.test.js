@@ -87,3 +87,17 @@ test('nota do outro projeto', () => {
   assert.strictEqual(j2.novas, 0);
   assert.strictEqual(j2.texto, j1.texto);
 });
+
+test('leitura da etiqueta: EAN com dígito, serial e marca pelo serial', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'Index.html'), 'utf8');
+  const js = html.match(/<script>([\s\S]*)<\/script>/)[1];
+  const pedaco = js.slice(js.indexOf('function ehEan'), js.indexOf('function fotoParaCanvas'));
+  const f = new Function(pedaco + '; return { ehEan, pareceSerial, marcaPeloSerial };')();
+  assert.ok(f.ehEan('7898573299654'));
+  assert.ok(!f.ehEan('7898573299655'));
+  assert.ok(f.pareceSerial('TAN0B606399744G'));
+  assert.strictEqual(f.marcaPeloSerial('NXJH1AL003537005389Z00'), 'ACER');
+  assert.strictEqual(f.marcaPeloSerial('W2NOB605722209C'), 'ASUS');
+  assert.strictEqual(f.marcaPeloSerial('PE0FLHWQ'), 'LENOVO');
+  assert.strictEqual(f.marcaPeloSerial('2SG7CJ4'), 'DELL');
+});

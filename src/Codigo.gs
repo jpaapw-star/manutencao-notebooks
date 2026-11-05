@@ -322,6 +322,20 @@ function apiBuscar(serial) {
   return achados.length ? achados[achados.length - 1] : null;
 }
 
+/** O que a planilha já sabe de um EAN (último aparelho com ele): tipo, marca, modelo, descrição. */
+function apiPorEan(ean) {
+  var e = String(ean || '').replace(/\D/g, '').replace(/^0(\d{13})$/, '$1');
+  if (e.length < 8) return null;
+  var d = lerItens_(abaPrincipal_(planilha_()));
+  for (var i = d.itens.length - 1; i >= 0; i--) {
+    var it = d.itens[i];
+    if (String(it.EAN || '').replace(/\D/g, '').replace(/^0(\d{13})$/, '$1') === e && (it.MODELO || it['DESCRIÇÃO'])) {
+      return { TIPO: it.TIPO || '', MARCA: it.MARCA || '', MODELO: it.MODELO || '', 'DESCRIÇÃO': it['DESCRIÇÃO'] || '' };
+    }
+  }
+  return null;
+}
+
 /** Cria (sem _linha) ou atualiza (com _linha) um aparelho. Grava só os campos que mudaram. */
 function apiSalvar(item, tecnico) {
   var lock = LockService.getScriptLock();
