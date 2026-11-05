@@ -121,3 +121,39 @@ test('leitura da etiqueta: EAN com dígito, serial e marca pelo serial', () => {
   assert.strictEqual(f.marcaPeloSerial('PE0FLHWQ'), 'LENOVO');
   assert.strictEqual(f.marcaPeloSerial('2SG7CJ4'), 'DELL');
 });
+
+const { ehGarantia, planosDeMontagem, linhasCompativeis } = m.exports;
+
+test('garantia: coluna GARANTIA ou situação de garantia', () => {
+  assert.ok(ehGarantia({ GARANTIA: 'GARANTIA', 'SITUAÇÃO': 'EM ANÁLISE' }));
+  assert.ok(ehGarantia({ GARANTIA: 'CONFERIR GARANTIA', 'SITUAÇÃO': 'ENVIADO PARA GARANTIA' }));
+  assert.ok(ehGarantia({ GARANTIA: '', 'SITUAÇÃO': 'AGUARDANDO NF' }));
+  assert.ok(!ehGarantia({ GARANTIA: 'SEM GARANTIA', 'SITUAÇÃO': 'EM REPARO' }));
+  assert.ok(!ehGarantia({ GARANTIA: 'CONFERIR GARANTIA', 'SITUAÇÃO': 'EM ANÁLISE' }));
+});
+
+test('montagem: vários doadores fazem um notebook, cada peça usada uma vez', () => {
+  const itens = [
+    { MODELO: 'E1504F', SERIAL: 'ALVO', 'PEÇAS': 'TELA (CONFIRMADA), WEBCAM (PROVÁVEL), TECLADO (SUSPEITA)', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 2 },
+    { MODELO: 'E1504F', SERIAL: 'D1', 'PEÇAS': 'WEBCAM, TECLADO, PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', _linha: 3 },
+    { MODELO: 'E1504F', SERIAL: 'D2', 'PEÇAS': 'TELA, PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', _linha: 4 },
+    { MODELO: 'X515', SERIAL: 'OUTRO', 'PEÇAS': 'TELA', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 5 },
+    { MODELO: 'X515', SERIAL: 'FIM', 'PEÇAS': '', 'SITUAÇÃO': 'FINALIZADO', _linha: 6 }
+  ];
+  const p = planosDeMontagem(itens);
+  assert.strictEqual(p.length, 1);
+  assert.strictEqual(p[0].serial, 'ALVO');
+  const de = {};
+  p[0].recebe.forEach(r => { de[r.peca] = r.de; });
+  assert.deepStrictEqual(de, { TELA: 'D1', WEBCAM: 'D2', TECLADO: 'D2' });
+  const l = linhasCompativeis(p, itens);
+  assert.strictEqual(l.length, 3);
+  assert.deepStrictEqual(l.map(x => x.valores[1]), ['MONTAR', 'DOADOR (SUCATA)', 'DOADOR (SUCATA)']);
+  assert.ok(l.every(x => x.grupo === 0));
+  // Dois que se ajudam também viram grupo; quem já doou não é montado.
+  const par = planosDeMontagem([
+    { MODELO: 'A', SERIAL: 'P1', 'PEÇAS': 'TELA', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 2 },
+    { MODELO: 'A', SERIAL: 'P2', 'PEÇAS': 'WEBCAM', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 3 }
+  ]);
+  assert.strictEqual(par.length, 1);
+});

@@ -30,13 +30,18 @@ var COLUNAS_AUTO = ['COMBINA COM'];
 var NOTAS = 'O QUE FOI FEITO / NOTAS';
 var COLUNAS_DO_APP = ['PEÇAS', NOTAS, 'COMBINA COM'];
 var OBS = 'OBSERVAÇÕES';
-var VERSAO_PLANILHA = '5';
+var VERSAO_PLANILHA = '6';
 var DATAS = ['DATA ENTRADA', 'ÚLTIMA ATUALIZAÇÃO'];
-var VISTAS = { GARANTIA: ['ENVIADO PARA GARANTIA', 'AGUARDANDO NF'], 'PEÇAS': ['AGUARDANDO PEÇA', 'PEÇA PEDIDA'],
+// Produtos em garantia ficam na aba GARANTIA (com as mesmas colunas), não em APARELHOS.
+var ABA_GARANTIA = 'GARANTIA';
+var VISTAS = { 'PEÇAS': ['AGUARDANDO PEÇA', 'PEÇA PEDIDA'],
   SUCATA: ['SUCATA'] };
 // Abas que não existem mais (o app apaga se encontrar). Os finalizados continuam em APARELHOS.
-var ABAS_REMOVIDAS = ['FINALIZADOS'];
+var ABAS_REMOVIDAS = ['FINALIZADOS', 'RESUMO'];
 var HISTORICO = 'HISTÓRICO';
+var COMPATIVEIS = 'COMPATÍVEIS';
+// Uma cor clara por grupo na aba COMPATÍVEIS (pedido do João: grupos em cores diferentes).
+var CORES_GRUPOS = ['#dbeafe', '#dcfce7', '#fef3c7', '#fce7f3', '#ede9fe', '#ffedd5', '#ccfbf1', '#e5e7eb'];
 
 // ===== Funções puras (testadas em Node) =====
 
@@ -79,6 +84,13 @@ function paraFinalizar(itens, finalizados) {
   return out;
 }
 
+
+/** Produto em garantia: coluna GARANTIA = "GARANTIA" ou situação de garantia (enviado, aguardando NF, voltou). */
+function ehGarantia(it) {
+  var g = semAcento_(it.GARANTIA).trim();
+  var s = semAcento_(it['SITUAÇÃO']).trim();
+  return /^(EM |COM |NA )?GARANTIA$/.test(g) || /GARANTIA|AGUARDANDO NF/.test(s);
+}
 
 // ===== Peças com defeito e notebooks que se completam =====
 
@@ -281,6 +293,48 @@ function combinacoes(itens) {
   return out;
 }
 
+/**
+ * Notebooks fáceis de resolver: para cada aparelho em aberto, outros do MESMO modelo que, juntos,
+ * têm boas todas as peças que faltam nele. Pode precisar de 2, 3 ou mais doadores.
+ * Cada peça boa de um doador só é usada uma vez; quem doa não entra como aparelho a montar.
+ * Começa pelos que precisam de menos peças. Retorna [{ serial, modelo, recebe: [{peca, de, sucata}] }].
+ */
+function planosDeMontagem(itens) {
+  var lista = [];
+  itens.forEach(function (it, i) {
+    var sit = semAcento_(it['SITUAÇÃO']).trim();
+    var m = modeloChave_(it.MODELO);
+    if (sit === 'FINALIZADO' || !m) return;
+    lista.push({ i: i, m: m, modelo: String(it.MODELO || '').trim(), serial: String(it.SERIAL || '').trim() || ('linha ' + it._linha),
+      aba: it._aba || '', linha: it._linha, pecas: pecasDaColuna(it['PEÇAS']), sucata: sit === 'SUCATA', usadas: {}, doou: false, montado: false });
+  });
+  var alvos = lista.filter(function (a) { return !a.sucata && a.pecas.length; })
+    .sort(function (a, b) { return a.pecas.length - b.pecas.length; });
+  var planos = [];
+  alvos.forEach(function (a) {
+    if (a.doou) return;
+    var doadores = lista.filter(function (b) { return b !== a && b.m === a.m && !b.montado; });
+    var falta = a.pecas.slice(), recebe = [];
+    while (falta.length) {
+      var melhor = null, cobre = [];
+      doadores.forEach(function (b) {
+        var c = falta.filter(function (p) { return b.pecas.indexOf(p) < 0 && !b.usadas[p]; });
+        if (!c.length) return;
+        var nota = c.length * 10 + (b.sucata ? 5 : 0) + Math.min(b.pecas.length, 4);
+        if (!melhor || nota > melhor.nota) { melhor = { b: b, nota: nota }; cobre = c; }
+      });
+      if (!melhor) break;
+      cobre.forEach(function (p) { recebe.push({ peca: p, de: melhor.b.serial, sucata: melhor.b.sucata, d: melhor.b }); melhor.b.usadas[p] = true; });
+      falta = falta.filter(function (p) { return cobre.indexOf(p) < 0; });
+    }
+    if (falta.length) { recebe.forEach(function (r) { delete r.d.usadas[r.peca]; }); return; }
+    a.montado = true;
+    recebe.forEach(function (r) { r.d.doou = true; delete r.d; });
+    planos.push({ serial: a.serial, modelo: a.modelo, aba: a.aba, linha: a.linha, recebe: recebe });
+  });
+  return planos;
+}
+
 // ===== Planilha =====
 
 function planilha_() { return SpreadsheetApp.openById(PLANILHAS.MANUTENCAO); }
@@ -337,6 +391,9 @@ function prepararPlanilha_() {
       }
     }
   }
+  // Aba GARANTIA com as mesmas colunas de APARELHOS (antes era só uma lista automática).
+  var ga = abaGarantia_(ss);
+  ga.getRange(1, 1, 1, cab.length).setValues([cab]);
   // Abas que se montam sozinhas.
   Object.keys(VISTAS).forEach(function (nome) {
     var v = ss.getSheetByName(nome);
@@ -344,22 +401,10 @@ function prepararPlanilha_() {
     v.clearContents();
     v.getRange(1, 1, 1, cab.length).setValues([cab]);
     v.setFrozenRows(1);
-    var cond = VISTAS[nome].map(function (s) { return '(' + ABA + '!' + cSit + '2:' + cSit + '="' + s + '")'; }).join('+');
-    v.getRange(2, 1).setFormula('=IFERROR(FILTER(' + ABA + '!A2:' + ult + ',' + cond + '),"")');
+    var colSit = '{' + ABA + '!' + cSit + '2:' + cSit + ';' + ABA_GARANTIA + '!' + cSit + '2:' + cSit + '}';
+    var cond = VISTAS[nome].map(function (s) { return '(' + colSit + '="' + s + '")'; }).join('+');
+    v.getRange(2, 1).setFormula('=IFERROR(FILTER({' + ABA + '!A2:' + ult + ';' + ABA_GARANTIA + '!A2:' + ult + '},' + cond + '),"")');
   });
-  // Resumo com FINALIZADO.
-  var res = ss.getSheetByName('RESUMO');
-  if (res) {
-    var a = res.getRange(1, 1, Math.max(res.getLastRow(), 1), 1).getValues().map(function (l) { return String(l[0]).trim(); });
-    if (a.indexOf(FINALIZADO) < 0) {
-      var t = a.indexOf('TOTAL');
-      if (t > 0) {
-        res.insertRowBefore(t + 1);
-        res.getRange(t + 1, 1, 1, 2).setValues([[FINALIZADO, '=COUNTIF(' + ABA + '!' + cSit + '2:' + cSit + ',A' + (t + 1) + ')']]);
-        res.getRange(t + 2, 2).setFormula('=SUM(B2:B' + (t + 1) + ')');
-      }
-    }
-  }
   if (!ss.getSheetByName(HISTORICO)) {
     var h = ss.insertSheet(HISTORICO);
     h.getRange(1, 1, 1, 6).setValues([['DATA', 'TÉCNICO', 'SERIAL', 'O QUE MUDOU', 'ANTES', 'DEPOIS']]);
@@ -376,13 +421,58 @@ function prepararPlanilha_() {
     migrarNotas_(ss, aba);
   }
   // Célula de notas compacta: uma linha por observação, sem quebrar o texto.
-  if (cN > 0) {
-    aba.getRange(1, cN, aba.getMaxRows(), 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP).setVerticalAlignment('top');
-    aba.setColumnWidth(cN, 460);
-  }
+  if (cN > 0) [aba, ga].forEach(function (x) {
+    x.getRange(1, cN, x.getMaxRows(), 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP).setVerticalAlignment('top');
+    x.setColumnWidth(cN, 460);
+  });
   garantirGatilho_();
-  recalcular_(aba);
+  recalcular_(ss);
   cache.put('pronta', VERSAO_PLANILHA, 21600);
+}
+
+/** Linhas da aba COMPATÍVEIS a partir dos planos de montagem (pura). Um grupo por notebook a montar. */
+function linhasCompativeis(planos, itens) {
+  var porSerial = {};
+  (itens || []).forEach(function (it) { porSerial[String(it.SERIAL || '').trim() || ('linha ' + it._linha)] = it; });
+  var out = [];
+  planos.forEach(function (p, g) {
+    var a = porSerial[p.serial] || {};
+    var de = {}, ordem = [];
+    p.recebe.forEach(function (r) { if (!de[r.de]) { de[r.de] = []; ordem.push(r.de); } de[r.de].push(r.peca); });
+    out.push({ grupo: g, valores: [g + 1, 'MONTAR', p.serial, p.modelo, a._aba || '', a['SITUAÇÃO'] || '', String(a['PEÇAS'] || ''),
+      'Recebe ' + p.recebe.map(function (r) { return r.peca; }).join(', ') + ' de ' + ordem.length + (ordem.length === 1 ? ' doador' : ' doadores')] });
+    ordem.forEach(function (s) {
+      var b = porSerial[s] || {};
+      out.push({ grupo: g, valores: [g + 1, String(b['SITUAÇÃO'] || '').toUpperCase() === 'SUCATA' ? 'DOADOR (SUCATA)' : 'DOADOR', s, b.MODELO || p.modelo,
+        b._aba || '', b['SITUAÇÃO'] || '', String(b['PEÇAS'] || ''), 'Dá ' + de[s].join(', ') + ' para ' + p.serial] });
+    });
+  });
+  return out;
+}
+
+/** Reescreve a aba COMPATÍVEIS (só quando mudou): cada grupo com uma cor. */
+function escreverCompativeis_(ss, itens) {
+  var linhas = linhasCompativeis(planosDeMontagem(itens), itens);
+  var assinatura = JSON.stringify(linhas);
+  var cache = CacheService.getScriptCache();
+  var aba = ss.getSheetByName(COMPATIVEIS);
+  if (aba && cache.get('compat') === Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, assinatura))) return;
+  if (!aba) aba = ss.insertSheet(COMPATIVEIS, 2);
+  aba.clear();
+  var cab = ['GRUPO', 'PAPEL', 'SERIAL', 'MODELO', 'ABA', 'SITUAÇÃO', 'PEÇAS COM DEFEITO', 'O QUE FAZ NO GRUPO'];
+  aba.getRange(1, 1, 1, cab.length).setValues([cab]).setFontWeight('bold');
+  aba.setFrozenRows(1);
+  if (linhas.length) {
+    aba.getRange(2, 1, linhas.length, cab.length).setValues(linhas.map(function (l) { return l.valores; }));
+    aba.getRange(2, 1, linhas.length, cab.length).setBackgrounds(linhas.map(function (l) {
+      var c = CORES_GRUPOS[l.grupo % CORES_GRUPOS.length];
+      return cab.map(function () { return c; });
+    }));
+    aba.getRange(2, 2, linhas.length, 1).setFontWeight('bold');
+  } else {
+    aba.getRange(2, 1).setValue('Nenhum notebook pode ser montado com peças de outros do mesmo modelo agora.');
+  }
+  cache.put('compat', Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, assinatura)), 21600);
 }
 
 /** Uma vez só: o texto antigo de NOTAS e de PEÇAS vira observação, para nada se perder. */
@@ -455,7 +545,7 @@ function lerItens_(aba) {
   if (n < 1) return { cab: cab, itens: [] };
   var vals = aba.getRange(2, 1, n, cab.length).getValues();
   var itens = vals.map(function (l, i) {
-    var o = { _linha: i + 2 };
+    var o = { _linha: i + 2, _aba: aba.getName() };
     cab.forEach(function (h, j) {
       var v = l[j];
       o[h] = v instanceof Date ? Utilities.formatDate(v, 'America/Sao_Paulo', 'dd/MM/yyyy') : v;
@@ -463,6 +553,50 @@ function lerItens_(aba) {
     return o;
   }).filter(function (o) { return String(o.SERIAL || o.MODELO || o['DESCRIÇÃO'] || '').trim() !== ''; });
   return { cab: cab, itens: itens };
+}
+
+/** Aba GARANTIA com dados (se ainda for a lista automática antiga, limpa e põe o cabeçalho). */
+function abaGarantia_(ss) {
+  var g = ss.getSheetByName(ABA_GARANTIA);
+  if (!g) g = ss.insertSheet(ABA_GARANTIA, 2);
+  if (g.getRange(2, 1).getFormula()) {
+    g.clearContents();
+    var cab = cabecalho_(abaPrincipal_(ss));
+    g.getRange(1, 1, 1, cab.length).setValues([cab]);
+  }
+  g.setFrozenRows(1);
+  return g;
+}
+
+function abaDe_(ss, nome) { return nome === ABA_GARANTIA ? abaGarantia_(ss) : abaPrincipal_(ss); }
+
+/** Aparelhos das duas abas (APARELHOS e GARANTIA), cada um com _aba e _linha. */
+function lerTudo_(ss) {
+  var d = lerTudo_(ss);
+  var g = lerItens_(abaGarantia_(ss));
+  return { cab: d.cab, itens: d.itens.concat(g.itens) };
+}
+
+/** Produto em garantia vai para a aba GARANTIA; se deixou de ser garantia, volta para APARELHOS. */
+function distribuir_(ss) {
+  var ap = abaPrincipal_(ss), ga = abaGarantia_(ss);
+  [[ap, ga, true], [ga, ap, false]].forEach(function (x) {
+    var de = x[0], para = x[1];
+    var d = lerItens_(de);
+    var mover = d.itens.filter(function (it) { return ehGarantia(it) === x[2]; });
+    if (!mover.length) return;
+    var cN = d.cab.indexOf(NOTAS);
+    mover.forEach(function (it) {
+      var vals = de.getRange(it._linha, 1, 1, d.cab.length).getValues();
+      var nota = cN >= 0 ? de.getRange(it._linha, cN + 1).getNote() : '';
+      var r = para.getLastRow() + 1;
+      para.getRange(r, 1, 1, d.cab.length).setValues(vals);
+      if (nota) para.getRange(r, cN + 1).setNote(nota);
+      historico_(ss, 'AUTOMÁTICO', it.SERIAL, 'ABA', de.getName(), para.getName());
+    });
+    mover.map(function (it) { return it._linha; }).sort(function (a, b) { return b - a; })
+      .forEach(function (r) { de.deleteRow(r); });
+  });
 }
 
 function historico_(ss, tecnico, serial, oque, antes, depois) {
@@ -484,16 +618,22 @@ function listas_(ss) {
 }
 
 /**
- * Recalcula de toda a aba: PEÇAS (previsão pelo defeito + observações), a célula de NOTAS
+ * Move os produtos em garantia para a aba GARANTIA e recalcula das duas abas: PEÇAS (previsão pelo defeito + observações), a célula de NOTAS
  * (resumo, com o texto completo na nota da célula) e COMBINA COM. Só grava o que mudou.
  */
-function recalcular_(aba) {
-  var d = lerItens_(aba);
+function recalcular_(ss) {
+  distribuir_(ss);
+  var d = lerTudo_(ss);
   if (!d.itens.length) return;
-  var mapa = lerObs_(aba.getParent());
+  var mapa = lerObs_(ss);
   var cP = d.cab.indexOf('PEÇAS'), cN = d.cab.indexOf(NOTAS), cC = d.cab.indexOf('COMBINA COM');
-  var notas = cN >= 0 ? aba.getRange(2, cN + 1, aba.getLastRow() - 1, 1).getNotes() : [];
+  var abas = {}, notas = {};
+  [abaPrincipal_(ss), abaGarantia_(ss)].forEach(function (a) {
+    abas[a.getName()] = a;
+    notas[a.getName()] = cN >= 0 && a.getLastRow() > 1 ? a.getRange(2, cN + 1, a.getLastRow() - 1, 1).getNotes() : [];
+  });
   d.itens.forEach(function (it) {
+    var aba = abas[it._aba];
     var obs = obsDoItem_(mapa, it);
     if (cP >= 0) {
       var p = preverPecas(it.DEFEITO, obs.map(function (o) { return o.texto; })).texto;
@@ -502,13 +642,14 @@ function recalcular_(aba) {
     if (cN >= 0 && obs.length) {
       var c = celulaNotas(obs), n = notaCompleta(obs);
       if (String(it[NOTAS] || '') !== c) aba.getRange(it._linha, cN + 1).setValue(c);
-      if ((notas[it._linha - 2] || [''])[0] !== n) aba.getRange(it._linha, cN + 1).setNote(n);
+      if ((notas[it._aba][it._linha - 2] || [''])[0] !== n) aba.getRange(it._linha, cN + 1).setNote(n);
     }
   });
+  escreverCompativeis_(ss, d.itens);
   if (cC < 0) return;
   var comb = combinacoes(d.itens);
   d.itens.forEach(function (it, i) {
-    if (String(it['COMBINA COM'] || '') !== comb[i]) aba.getRange(it._linha, cC + 1).setValue(comb[i]);
+    if (String(it['COMBINA COM'] || '') !== comb[i]) abas[it._aba].getRange(it._linha, cC + 1).setValue(comb[i]);
   });
 }
 
@@ -525,7 +666,7 @@ function doGet() {
 /** Tudo que a tela precisa: listas e aparelhos em aberto (e os encerrados nos últimos 30 dias). */
 function apiInicio() {
   var ss = planilha_();
-  var d = lerItens_(abaPrincipal_(ss));
+  var d = lerTudo_(ss);
   var limite = new Date(Date.now() - 30 * 86400000);
   var itens = d.itens.filter(function (it) {
     var sit = String(it['SITUAÇÃO'] || '').toUpperCase();
@@ -535,7 +676,7 @@ function apiInicio() {
   });
   var mapa = lerObs_(ss);
   itens.forEach(function (it) { it._obs = obsParaTela_(obsDoItem_(mapa, it)); });
-  return { listas: listas_(ss), itens: itens, colunas: d.cab, planilha: ss.getUrl(), ia: !!iaChave_() };
+  return { listas: listas_(ss), itens: itens, colunas: d.cab, planilha: ss.getUrl(), ia: !!iaChave_(), montagens: planosDeMontagem(d.itens) };
 }
 
 function obsParaTela_(obs) {
@@ -546,7 +687,7 @@ function obsParaTela_(obs) {
 function apiBuscar(serial) {
   var n = normalizarSerial(serial);
   if (!n) return null;
-  var d = lerItens_(abaPrincipal_(planilha_()));
+  var d = lerTudo_(planilha_());
   var achados = d.itens.filter(function (it) { return normalizarSerial(it.SERIAL) === n; });
   if (!achados.length) return null;
   var it = achados[achados.length - 1];
@@ -614,7 +755,7 @@ function apiLerComIA(base64, jaLido) {
 function apiPorEan(ean) {
   var e = String(ean || '').replace(/\D/g, '').replace(/^0(\d{13})$/, '$1');
   if (e.length < 8) return null;
-  var d = lerItens_(abaPrincipal_(planilha_()));
+  var d = lerTudo_(planilha_());
   for (var i = d.itens.length - 1; i >= 0; i--) {
     var it = d.itens[i];
     if (String(it.EAN || '').replace(/\D/g, '').replace(/^0(\d{13})$/, '$1') === e && (it.MODELO || it['DESCRIÇÃO'])) {
@@ -634,7 +775,7 @@ function apiSalvar(item, tecnico) {
   lock.waitLock(20000);
   try {
     var ss = planilha_();
-    var aba = abaPrincipal_(ss);
+    var aba = abaDe_(ss, item._linha ? item._aba : ABA);
     var cab = cabecalho_(aba);
     var agora = new Date();
     var paraCelula = function (h, v) {
@@ -667,7 +808,7 @@ function apiSalvar(item, tecnico) {
       aba.getRange(r, 1, 1, cab.length).setValues([linha]);
       historico_(ss, tecnico, serial, 'CADASTRO', '', item['SITUAÇÃO']);
       adicionarObs_(ss, { SERIAL: serial, MODELO: item.MODELO, _linha: r }, notasDoPedido_(item, tecnico, agora));
-      recalcular_(aba);
+      recalcular_(ss);
       return { ok: true, linha: r };
     }
     var r2 = Number(item._linha);
@@ -697,7 +838,7 @@ function apiSalvar(item, tecnico) {
     var cu = cab.indexOf('ÚLTIMA ATUALIZAÇÃO');
     if (cu >= 0) atual[cu] = agora;
     aba.getRange(r2, 1, 1, cab.length).setValues([atual]);
-    recalcular_(aba);
+    recalcular_(ss);
     return { ok: true, linha: r2 };
   } finally {
     lock.releaseLock();
@@ -778,7 +919,7 @@ function aplicarNota_(n) {
     var r = apiSalvar(novo, tec + ' (notas)');
     return { ok: r.ok, serial: n.serial, criado: true };
   }
-  var mud = { _linha: ja._linha, _serial: ja.SERIAL, _notas: notas };
+  var mud = { _linha: ja._linha, _aba: ja._aba, _serial: ja.SERIAL, _notas: notas };
   if (n.situacao && ENCERRADAS.indexOf(String(ja['SITUAÇÃO']).toUpperCase()) < 0) mud['SITUAÇÃO'] = n.situacao.toUpperCase();
   if (n.defeito && !String(ja.DEFEITO || '').trim()) mud.DEFEITO = n.defeito;
   if (n.modelo && !String(ja.MODELO || '').trim()) mud.MODELO = n.modelo;
@@ -798,20 +939,20 @@ function sincronizarQualidade() {
   lock.waitLock(30000);
   try {
     var ss = planilha_();
-    var aba = abaPrincipal_(ss);
-    var d = lerItens_(aba);
+    var d = lerTudo_(ss);
     var idx = paraFinalizar(d.itens, fin);
     var cSit = d.cab.indexOf('SITUAÇÃO') + 1;
     var cUlt = d.cab.indexOf('ÚLTIMA ATUALIZAÇÃO') + 1;
     var hoje = Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'dd/MM/yyyy');
     idx.forEach(function (i) {
       var it = d.itens[i];
+      var aba = abaDe_(ss, it._aba);
       aba.getRange(it._linha, cSit).setValue(FINALIZADO);
       if (cUlt > 0) aba.getRange(it._linha, cUlt).setValue(new Date());
       adicionarObs_(ss, it, [{ data: new Date(), tecnico: 'AUTOMÁTICO', texto: 'Finalizado (aprovado no controle de qualidade).', origem: 'QUALIDADE' }]);
       historico_(ss, 'AUTOMÁTICO', it.SERIAL, 'SITUAÇÃO', it['SITUAÇÃO'], FINALIZADO);
     });
-    recalcular_(aba);
+    recalcular_(ss);
     PropertiesService.getScriptProperties().setProperty('ULTIMA_SINCRONIA', hoje + ' · ' + idx.length + ' finalizado(s)');
     return idx.length;
   } finally {
@@ -826,5 +967,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }

@@ -19,6 +19,10 @@
   input:focus, select:focus, textarea:focus { border-color:var(--fraco); }
   textarea { min-height:90px; resize:vertical; }
   label { display:block; font-size:13px; color:var(--fraco); margin:14px 0 6px; }
+  .cabeca { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .monta { border-bottom:1px solid var(--linha); padding:14px 2px; }
+  .monta button { background:none; border:0; padding:0; color:var(--texto); font:inherit; font-weight:600; text-align:left; }
+  .monta .l2 { color:var(--fraco); font-size:14px; margin-top:4px; white-space:pre-line; }
   .busca { display:flex; gap:8px; }
   .busca input { flex:1; }
   .chips { display:flex; gap:8px; overflow-x:auto; padding:14px 0 6px; scrollbar-width:none; }
@@ -52,7 +56,7 @@
 </head>
 <body>
 <div class="tela">
-  <h1>Manutenção</h1>
+  <div class="cabeca"><h1>Manutenção</h1><button class="chip" id="montar" style="display:none"></button></div>
   <div class="sub" id="sub">Carregando…</div>
   <div class="busca">
     <input id="busca" type="search" placeholder="Serial, modelo ou defeito" autocomplete="off">
@@ -72,6 +76,14 @@
     <label>Outro nome</label>
     <input id="outroNome" placeholder="Seu nome">
     <p><button class="btn" id="salvarNome">Continuar</button></p>
+  </div>
+</div>
+
+<div class="painel" id="pMontar">
+  <div class="topo"><button id="fecharMontar">Voltar</button><b>Fáceis de montar</b><span style="width:60px"></span></div>
+  <div class="tela">
+    <div class="sub">Notebooks que ficam completos com peças boas de outros do mesmo modelo (um ou vários doadores). Cada peça aparece uma vez só.</div>
+    <div id="montagens"></div>
   </div>
 </div>
 
@@ -104,7 +116,8 @@ function chamar(fn, args, ok, erro){
 
 function carregar(depois){
   chamar('apiInicio', [], function(d){
-    S.listas = d.listas || {}; S.itens = d.itens || []; S.ia = !!d.ia;
+    S.listas = d.listas || {}; S.itens = d.itens || []; S.ia = !!d.ia; S.montagens = d.montagens || [];
+    var bm = $('montar'); bm.style.display = S.montagens.length ? '' : 'none'; bm.textContent = '⇄ ' + S.montagens.length + ' para montar';
     $('sub').innerHTML = (S.tecnico ? esc(S.tecnico) + ' · <a href="#" id="trocar">trocar</a> · ' : '') + '<a href="' + esc(d.planilha) + '" target="_blank">abrir planilha</a>';
     var t = $('trocar'); if (t) t.onclick = function(e){ e.preventDefault(); pedirNome(); };
     desenhar();
@@ -139,11 +152,28 @@ function desenhar(){
     var t = [i.MARCA, i.MODELO].filter(Boolean).join(' ') || i['DESCRIÇÃO'] || i.TIPO || 'Aparelho';
     var l2 = [i['SITUAÇÃO'], String(i['PEÇAS'] || '').split('|')[0].trim() || i.DEFEITO, i['TÉCNICO']].filter(Boolean).join(' · ');
     if (i['COMBINA COM']) l2 += ' · ⇄ combina com ' + String(i['COMBINA COM']).split('\n').length;
-    return '<button class="item" data-l="' + i._linha + '"><b>' + esc(t) + '</b> <span style="color:var(--fraco)">' + esc(i.SERIAL||'') + '</span><div class="l2">' + esc(l2) + '</div></button>';
+    return '<button class="item" data-l="' + esc(i._aba + ':' + i._linha) + '"><b>' + esc(t) + '</b> <span style="color:var(--fraco)">' + esc(i.SERIAL||'') + '</span><div class="l2">' + esc(l2) + '</div></button>';
   }).join('') : '<div class="vazio">' + (q ? 'Nada encontrado. Toque em "Novo aparelho" para cadastrar.' : 'Nenhum aparelho aqui.') + '</div>';
   Array.prototype.forEach.call($('lista').querySelectorAll('.item'), function(b){
-    b.onclick = function(){ var l = +b.getAttribute('data-l'); abrir(S.itens.filter(function(i){ return i._linha === l; })[0]); };
+    b.onclick = function(){ abrir(acharItem(b.getAttribute('data-l'))); };
   });
+}
+
+function acharItem(chave){ return S.itens.filter(function(i){ return (i._aba + ':' + i._linha) === chave; })[0]; }
+
+function mostrarMontagens(){
+  $('montagens').innerHTML = S.montagens.map(function(m){
+    var de = {};
+    m.recebe.forEach(function(r){ (de[r.de] = de[r.de] || { sucata: r.sucata, pecas: [] }).pecas.push(r.peca); });
+    var l2 = Object.keys(de).map(function(s){ return de[s].pecas.join(', ') + ' ← ' + s + (de[s].sucata ? ' (sucata)' : ''); }).join('\n');
+    var n = Object.keys(de).length;
+    return '<div class="monta"><button data-l="' + esc(m.aba + ':' + m.linha) + '">' + esc(m.modelo) + ' · ' + esc(m.serial) + '</button>' +
+      '<div class="l2">' + esc(n === 1 ? '1 doador' : n + ' doadores') + '\n' + esc(l2) + '</div></div>';
+  }).join('');
+  Array.prototype.forEach.call($('montagens').querySelectorAll('button[data-l]'), function(b){
+    b.onclick = function(){ var it = acharItem(b.getAttribute('data-l')); if (it) { $('pMontar').classList.remove('on'); abrir(it); } };
+  });
+  $('pMontar').classList.add('on');
 }
 
 function campo(nome, tipo, valor){
@@ -209,7 +239,7 @@ function abrir(item){
 }
 
 function salvar(){
-  var item = S.atual ? { _linha: S.atual._linha, _serial: S.atual.SERIAL } : {};
+  var item = S.atual ? { _linha: S.atual._linha, _aba: S.atual._aba, _serial: S.atual.SERIAL } : {};
   CAMPOS.forEach(function(c){
     var el = $('f_' + c[0].replace(/\W/g,'_')); if (!el) return;
     var v = el.value.trim();
@@ -392,6 +422,8 @@ $('ler').onclick = function(){
 
 $('busca').oninput = desenhar;
 $('novo').onclick = function(){ abrir(null); };
+$('montar').onclick = mostrarMontagens;
+$('fecharMontar').onclick = function(){ $('pMontar').classList.remove('on'); };
 $('fechar').onclick = function(){ $('pItem').classList.remove('on'); };
 $('salvar').onclick = salvar;
 $('salvarNome').onclick = function(){ definirNome($('outroNome').value); };
