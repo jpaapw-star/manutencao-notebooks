@@ -1380,6 +1380,7 @@ function apiBuscar(serial) {
 
 var IA_MODELOS = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-flash-lite-latest', 'gemini-flash-latest'];
 var IA_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
+var IA_ETIQUETA = ['gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-3.1-flash-lite-preview', 'gemini-flash-lite-latest'];
 
 function iaChave_() { return (typeof SEGREDOS !== 'undefined' && SEGREDOS.iaChave) || ''; }
 
@@ -1393,28 +1394,39 @@ function apiIaLigada() { return !!iaChave_(); }
 function apiLerComIA(base64, jaLido) {
   var k = iaChave_();
   if (!k) return { erro: 'A IA não está ligada nesta publicação.' };
-  var dica = jaLido && (jaLido.serial || jaLido.ean) ? ' Já lido pelo código de barras: serial ' + (jaLido.serial || '?') + ', EAN ' + (jaLido.ean || '?') + '.' : '';
-  var texto = 'Foto da etiqueta de um notebook, console ou acessório em manutenção. Leia o número de série (S/N, SN, Serial), ' +
-    'o EAN/código de barras de 8 a 14 dígitos, a marca, o modelo (código do modelo, ex. E1504F, AG15-51P-39MU, 15IRH10) e uma descrição curta ' +
-    '(tipo, processador, memória, armazenamento, se aparecerem). Copie exatamente o que está impresso; não invente. Deixe vazio o que não aparece.' + dica;
+  jaLido = jaLido || {};
+  var codigos = [jaLido.serial].concat(jaLido.outros || []).filter(String);
+  var dica = codigos.length || jaLido.ean ? ' Códigos de barras lidos na foto (o leitor pode ter pego o código errado como serial): ' +
+    codigos.concat(jaLido.ean ? ['EAN ' + jaLido.ean] : []).join(', ') + '.' : '';
+  var texto = 'Foto da etiqueta de um notebook, console ou acessório em manutenção. Leia:\n' +
+    '- serial: o número de série impresso ao lado de S/N, SN, Serial No. ou Service Tag (Dell, 7 caracteres). ' +
+    'NÃO é o P/N, PN, Part No., SKU, SNID (Acer), UPC, EAN, MAC, IMEI nem o código do modelo. Asus costuma ter 15 caracteres (ex. W6N0B605436627B), ' +
+    'Acer 22 (ex. NXKMDAL0014159468C9501), Lenovo 8 (ex. PF4ABC12), Positivo 9 (ex. 4AK45WJ6S).\n' +
+    '- ean: código de barras de 8 a 14 dígitos (EAN/UPC), se houver.\n' +
+    '- marca.\n' +
+    '- modelo: o código do modelo (Model, Modelo, MOD), ex. E1504FA, A315-510P, 15IRH10, C4128E. Não use o P/N.\n' +
+    '- descricao: curta (processador, memória, armazenamento, se aparecerem).\n' +
+    'Copie letra por letra exatamente o que está impresso, sem trocar O por 0 nem I por 1 por conta própria; não invente. Deixe vazio o que não aparece.' + dica;
   var esquema = { type: 'OBJECT', properties: { serial: { type: 'STRING' }, ean: { type: 'STRING' }, marca: { type: 'STRING' }, modelo: { type: 'STRING' }, descricao: { type: 'STRING' } } };
   var partes = [{ text: texto }, { inline_data: { mime_type: 'image/jpeg', data: String(base64 || '').replace(/^data:[^,]*,/, '') } }];
   var erro = '';
-  for (var i = 0; i < IA_MODELOS.length; i++) {
+  // Etiqueta pede leitura caprichada: começa pelo modelo mais forte; os "lite" ficam de reserva.
+  var ordem = IA_ETIQUETA;
+  for (var i = 0; i < ordem.length; i++) {
     var modos = ['minimal', ''];
     for (var j = 0; j < modos.length; j++) {
       var cfg = { temperature: 0, responseMimeType: 'application/json', responseSchema: esquema };
       if (modos[j]) cfg.thinkingConfig = { thinkingLevel: modos[j] };
       var r;
       try {
-        r = UrlFetchApp.fetch(IA_URL + IA_MODELOS[i] + ':generateContent?key=' + encodeURIComponent(k), {
+        r = UrlFetchApp.fetch(IA_URL + ordem[i] + ':generateContent?key=' + encodeURIComponent(k), {
           method: 'post', contentType: 'application/json', muteHttpExceptions: true,
           payload: JSON.stringify({ contents: [{ role: 'user', parts: partes }], generationConfig: cfg })
         });
       } catch (e) { erro = String(e.message || e); break; }
       var cod = r.getResponseCode();
       if (cod === 400 && modos[j]) continue;          // modelo não aceita thinkingLevel: tenta sem
-      if (cod !== 200) { erro = IA_MODELOS[i] + ' ' + cod; break; }   // ocupado/limite/sem modelo: próximo
+      if (cod !== 200) { erro = ordem[i] + ' ' + cod; break; }   // ocupado/limite/sem modelo: próximo
       try {
         var t = JSON.parse(r.getContentText()).candidates[0].content.parts[0].text;
         var o = JSON.parse(t);
@@ -1424,7 +1436,7 @@ function apiLerComIA(base64, jaLido) {
           MARCA: String(o.marca || '').toUpperCase(),
           MODELO: String(o.modelo || '').toUpperCase(),
           'DESCRIÇÃO': String(o.descricao || '').toUpperCase(),
-          modelo_ia: IA_MODELOS[i]
+          modelo_ia: ordem[i]
         };
       } catch (e) { erro = 'resposta da IA ilegível'; break; }
     }

@@ -404,12 +404,15 @@ function preencherDaEtiqueta(r){
   };
   // IA do SCAN só quando o código de barras não resolveu (sem serial ou modelo desconhecido).
   var ia = function(){
-    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO'))) return;
-    var c = r.canvas, k = Math.min(1, 1280 / Math.max(c.width, c.height)), z = document.createElement('canvas');
+    // Pula a IA só quando o código de barras deu um serial com cara de serial de marca conhecida e o modelo já é conhecido.
+    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO') && marcaPeloSerial(valorCampo('SERIAL')))) return;
+    var c = r.canvas, k = Math.min(1, 2000 / Math.max(c.width, c.height)), z = document.createElement('canvas');
     z.width = Math.round(c.width * k); z.height = Math.round(c.height * k); z.getContext('2d').drawImage(c, 0, 0, z.width, z.height);
     aviso('Lendo o texto da etiqueta com IA…');
-    chamar('apiLerComIA', [z.toDataURL('image/jpeg', 0.8), { serial: valorCampo('SERIAL'), ean: valorCampo('EAN') }], function(d){
+    chamar('apiLerComIA', [z.toDataURL('image/jpeg', 0.92), { serial: valorCampo('SERIAL'), ean: valorCampo('EAN'), outros: r.outros || [] }], function(d){
       if (!d || d.erro) { aviso(d && d.erro || 'A IA não leu.'); return; }
+      // O leitor de código de barras pode ter pego o P/N como serial: se a IA leu outro serial impresso, vale o da IA.
+      if (d.SERIAL && valorCampo('SERIAL') && norm(d.SERIAL) !== norm(valorCampo('SERIAL')) && !S.atual && $('f_SERIAL')) $('f_SERIAL').value = '';
       var tinhaSerial = valorCampo('SERIAL');
       preencher(d);
       if (!tinhaSerial && d.SERIAL) {
