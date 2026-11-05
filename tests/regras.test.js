@@ -290,3 +290,20 @@ test('conferência da pesquisa dos modelos', () => {
   assert.deepStrictEqual(respostaModelos('MODELOS: E1504FA, X1504ZA\nMEDIDA: 15,6 polegadas, 30 pinos'), { modelos: 'E1504FA, X1504ZA', medida: '15.6" · 30 pinos' });
   assert.deepStrictEqual(respostaModelos('E1504FA, X1504ZA'), { modelos: 'E1504FA, X1504ZA', medida: '' });
 });
+
+test('planilha de manutenções: aba do mês e descrição no jeito dela', () => {
+  const { abaDoMes, ultimaAbaDeMes, descricaoReparo, linhaManutencao } = m.exports;
+  assert.strictEqual(abaDoMes(new Date(2026, 11, 1)), 'DEZEMBRO 2026');
+  assert.strictEqual(abaDoMes(new Date(2026, 2, 1)), 'MARÇO 2026');
+  assert.strictEqual(ultimaAbaDeMes(['NOVEMBRO 2026', 'OUTUBRO 2026', 'PRODUÇÃO 2026', 'DEZEMBRO', 'MARÇO 2026', 'outubro']), 'NOVEMBRO 2026');
+  assert.strictEqual(descricaoReparo('TROCADO: WEBCAM', [], ''), 'TROCA DE WEBCAM');
+  assert.strictEqual(descricaoReparo('TELA (PROVÁVEL), WI-FI (SUSPEITA), ÁUDIO (CONFIRMADA)', [], ''), 'REPARO NA INTERFACE DE VÍDEO, REDE E ÁUDIO');
+  assert.strictEqual(descricaoReparo('ÁUDIO (CONFIRMADA) | TROCADO: SSD, WI-FI', [], ''), 'TROCA DE SSD E PLACA DE REDE E REPARO NA INTERFACE DE ÁUDIO');
+  assert.strictEqual(descricaoReparo('CHIP DA BIOS (SUSPEITA)', ['formatei o windows'], ''), 'REPARO NA INTERFACE DE INICIALIZAÇÃO E FORMATAÇÃO DO SISTEMA');
+  assert.strictEqual(descricaoReparo('DESCARTADO: TELA', ['Reconectei a subplaca dos botões'], ''), 'RECONECTEI A SUBPLACA DOS BOTÕES');
+  const cab = ['TÉCNICO', 'MARCA', 'MODELO', 'SERIAL', 'DATA', 'DESCRIÇAO', 'ESTADO ', 'ENTREGUE', 'TIPO'];
+  const d = new Date(2026, 10, 5);
+  assert.deepStrictEqual(linhaManutencao(cab, { 'TÉCNICO': 'João Pedro', MARCA: 'Asus', MODELO: 'E1504FA', SERIAL: 'w6n0b' }, 'TROCA DE TELA', d),
+    ['JOÃO PEDRO', 'ASUS', 'E1504FA', 'W6N0B', d, 'TROCA DE TELA', '', '', '']);
+  assert.strictEqual(linhaManutencao(['TECNICO', 'MARCA', 'MODELO', 'SÉRIE', 'DATA', 'DEFEITO'], { SERIAL: 'X1' }, 'Y', d)[3], 'X1');
+});

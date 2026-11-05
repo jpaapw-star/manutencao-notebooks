@@ -9,8 +9,14 @@ var PLANILHAS = {
   // Planilha de manutenção (só o dono edita).
   MANUTENCAO: '1IgXP2qDv2vfByOGC5O3MKykYHVf8oe_hWVt70zm16sc',
   // Controle de qualidade: notebooks finalizados. Só é LIDA, nunca alterada.
-  QUALIDADE: '1JHONHaipHAKmtkcQ_7mm8VXA-h-LBQuu-I8uzPhjgDQ'
+  QUALIDADE: '1JHONHaipHAKmtkcQ_7mm8VXA-h-LBQuu-I8uzPhjgDQ',
+  // MANUTENÇÕES INFORMATICA GERAL: cada notebook dado como arrumado ganha uma linha na aba do mês ("NOVEMBRO 2026").
+  // O app só acrescenta linhas; a única mudança na planilha é criar a aba do mês quando ela ainda não existe.
+  ARRUMADOS: '10zHHWjV6Xva7ojDr7GpGRe_NuJufYZ62qhpwhMU3Hcs'
 };
+// Situações que contam como arrumado (vão para a planilha de manutenções do mês).
+var ARRUMADO = ['REPARADO', 'FINALIZADO'];
+var MESES = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
 var QUALIDADE_ABA = 'TabelaQualidade';
 // true: só conta como finalizado quando "APROVADO?" = Sim. false: basta o serial aparecer.
 var FINALIZA_SO_APROVADO = true;
@@ -1168,11 +1174,157 @@ function recalcular_(ss) {
   var est = lerEstoque_(ss), compat = lerCompat_(ss);
   escreverCompativeis_(ss, d.itens, est, compat);
   escreverPecas_(ss, d, est, compat);
+  try { registrarArrumados_(d.itens, mapa); } catch (x) { console.log('manutenções do mês: ' + x); }
   if (cC < 0) return;
   var comb = combinacoes(d.itens);
   d.itens.forEach(function (it, i) {
     if (String(it['COMBINA COM'] || '') !== comb[i]) abas[it._aba].getRange(it._linha, cC + 1).setValue(comb[i]);
   });
+}
+
+// ===== Planilha de manutenções do mês (MANUTENÇÕES INFORMATICA GERAL) =====
+
+/** Nome da aba do mês, ex.: "NOVEMBRO 2026". Pura. */
+function abaDoMes(data) { return MESES[data.getMonth()] + ' ' + data.getFullYear(); }
+
+/** A aba de mês mais recente entre os nomes (ex.: "OUTUBRO 2026"); '' se não houver. Pura. */
+function ultimaAbaDeMes(nomes) {
+  var melhor = '', nota = -1;
+  (nomes || []).forEach(function (n) {
+    var m = semAcento_(n).trim().match(/^([A-Z]+) (\d{4})$/);
+    var i = m ? MESES.map(semAcento_).indexOf(m[1]) : -1;
+    if (i >= 0 && +m[2] * 12 + i > nota) { nota = +m[2] * 12 + i; melhor = n; }
+  });
+  return melhor;
+}
+
+var NOME_TROCA = { 'WI-FI': 'PLACA DE REDE', 'MEMÓRIA': 'MEMÓRIA RAM', 'ÁUDIO': 'ALTO-FALANTE', 'CARREGADOR': 'CONECTOR DE CARGA' };
+var NOME_REPARO = { 'TELA': 'VÍDEO', 'WI-FI': 'REDE', 'CHIP DA BIOS': 'INICIALIZAÇÃO', 'SSD': 'ARMAZENAMENTO', 'CARREGADOR': 'CARGA',
+  'COOLER': 'REFRIGERAÇÃO', 'FLAT': 'VÍDEO', 'ENTRADA P2': 'ÁUDIO' };
+
+function listaPt_(xs) {
+  xs = xs.filter(function (x, n, a) { return x && a.indexOf(x) === n; });
+  return xs.length < 2 ? (xs[0] || '') : xs.slice(0, -1).join(', ') + ' E ' + xs[xs.length - 1];
+}
+
+/**
+ * Descrição no jeito da planilha de manutenções: "TROCA DE WEBCAM", "REPARO NA INTERFACE DE VÍDEO, REDE E ÁUDIO",
+ * "TROCA DE SSD E REPARO NA INTERFACE DE ÁUDIO". Vem da coluna PEÇAS e das observações. Pura.
+ */
+function descricaoReparo(pecas, textos, defeito) {
+  var v = String(pecas == null ? '' : pecas);
+  var troc = ((v.match(/TROCADO:\s*([^|]*)/) || [])[1] || '').split(',').map(function (x) { return x.trim(); }).filter(String);
+  var def = pecasDaColuna(v).filter(function (p) { return troc.indexOf(p) < 0 && p !== 'PLACA-MÃE' && p !== 'CARCAÇA'; });
+  var tudo = semAcento_([defeito].concat(textos || []).join(' '));
+  var partes = [];
+  if (troc.length) partes.push('TROCA DE ' + listaPt_(troc.map(function (p) { return NOME_TROCA[p] || p; })));
+  if (def.length) partes.push('REPARO NA INTERFACE DE ' + listaPt_(def.map(function (p) { return NOME_REPARO[p] || p; })));
+  if (/FORMATA|FORMATEI|REINSTAL\w* (O )?(SISTEMA|WINDOWS)/.test(tudo)) partes.push('FORMATAÇÃO DO SISTEMA');
+  if (/PLACA-MAE|PLACA MAE/.test(semAcento_(v)) && !partes.length) partes.push('REPARO NA PLACA-MÃE');
+  if (partes.length) return partes.length === 2 ? partes.join(' E ') : partes.join(', ');
+  var ult = (textos || []).filter(function (t) { return String(t || '').trim() && !/^Finalizado \(aprovado/.test(t); }).pop();
+  return String(ult ? resumoObs(ult, 90) : (defeito || 'REPARO')).toUpperCase();
+}
+
+/** Linha da planilha de manutenções na ordem do cabeçalho daquela aba (nomes de coluna variam de mês para mês). Pura. */
+function linhaManutencao(cab, it, descricao, data) {
+  return cab.map(function (h) {
+    var k = semAcento_(h).trim();
+    if (/^TECNICO/.test(k)) return String(it['TÉCNICO'] || '').toUpperCase();
+    if (k === 'MARCA') return String(it.MARCA || '').toUpperCase();
+    if (k === 'MODELO') return String(it.MODELO || '').toUpperCase();
+    if (/^(SERIAL|SERIE)$/.test(k)) return String(it.SERIAL || '').toUpperCase();
+    if (k === 'DATA') return data;
+    if (/^(DESCRICAO|DEFEITO)$/.test(k)) return descricao;
+    return '';
+  });
+}
+
+/**
+ * Cada aparelho que passou para REPARADO ou FINALIZADO entra uma vez na aba do mês da planilha de manutenções.
+ * Se voltar para uma situação em aberto, pode entrar de novo quando for arrumado outra vez.
+ * Não mexe em nada que já está lá: só acrescenta linhas, e cria a aba do mês (cópia do cabeçalho do mês anterior) quando falta.
+ */
+function registrarArrumados_(itens, mapa) {
+  var props = PropertiesService.getScriptProperties();
+  var marcas = props.getProperties();
+  var hoje = new Date();
+  var mesAtual = Utilities.formatDate(hoje, 'America/Sao_Paulo', 'MM/yyyy');
+  var novos = [];
+  itens.forEach(function (it) {
+    var sn = normalizarSerial(it.SERIAL);
+    if (!sn) return;
+    var chave = 'arr:' + sn;
+    var feito = ARRUMADO.indexOf(semAcento_(it['SITUAÇÃO']).trim()) >= 0;
+    if (!feito) { if (marcas[chave]) props.deleteProperty(chave); return; }
+    if (marcas[chave]) return;
+    // Só o que foi arrumado neste mês (o que é mais antigo já devia estar na planilha).
+    if (String(it['ÚLTIMA ATUALIZAÇÃO'] || '').slice(3) !== mesAtual) { props.setProperty(chave, 'antigo'); return; }
+    novos.push(it);
+  });
+  if (!novos.length) return 0;
+  var ss = SpreadsheetApp.openById(PLANILHAS.ARRUMADOS);
+  var nome = abaDoMes(hoje);
+  var aba = ss.getSheetByName(nome) || criarAbaDoMes_(ss, nome);
+  var cab = cabecalho_(aba);
+  var cS = cab.map(semAcento_).findIndex(function (h) { return /^(SERIAL|SERIE)$/.test(h.trim()); });
+  var ja = {};
+  if (cS >= 0 && aba.getLastRow() > 1) aba.getRange(2, cS + 1, aba.getLastRow() - 1, 1).getValues().forEach(function (l) { ja[normalizarSerial(l[0])] = true; });
+  var dataHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  var feitos = 0;
+  novos.forEach(function (it) {
+    var sn = normalizarSerial(it.SERIAL);
+    if (!ja[sn]) {
+      var textos = obsDoItem_(mapa, it).map(function (o) { return o.texto; });
+      acrescentarLinha_(ss, aba, linhaManutencao(cab, it, descricaoReparo(it['PEÇAS'], textos, it.DEFEITO), dataHoje));
+      ja[sn] = true;
+      feitos++;
+    }
+    props.setProperty('arr:' + sn, Utilities.formatDate(hoje, 'America/Sao_Paulo', 'dd/MM/yyyy'));
+  });
+  return feitos;
+}
+
+/** Cria a aba do mês copiando a aba do mês mais recente e limpando só os dados (cabeçalho, tabela e formatação ficam). */
+function criarAbaDoMes_(ss, nome) {
+  var base = ss.getSheetByName(ultimaAbaDeMes(ss.getSheets().map(function (x) { return x.getName(); })));
+  var nova;
+  if (base) {
+    nova = base.copyTo(ss).setName(nome);
+    if (nova.getMaxRows() > 1) nova.getRange(2, 1, nova.getMaxRows() - 1, nova.getMaxColumns()).clearContent();
+  } else {
+    nova = ss.insertSheet(nome);
+    nova.getRange(1, 1, 1, 9).setValues([['TÉCNICO', 'MARCA', 'MODELO', 'SERIAL', 'DATA', 'DESCRIÇÃO', 'ESTADO', 'ENTREGUE', 'TIPO']]).setFontWeight('bold');
+  }
+  ss.setActiveSheet(nova);
+  ss.moveActiveSheet(1);
+  return nova;
+}
+
+/** Escreve a linha logo depois da última preenchida. Se passar do fim da tabela do Google, usa a API para a tabela crescer junto. */
+function acrescentarLinha_(ss, aba, valores) {
+  var r = Math.max(aba.getLastRow(), 1) + 1;
+  var tabela = null;
+  try {
+    var info = Sheets.Spreadsheets.get(ss.getId(), { fields: 'sheets(properties(sheetId),tables(tableId,range))' });
+    (info.sheets || []).forEach(function (sh) {
+      if (sh.properties.sheetId === aba.getSheetId() && sh.tables && sh.tables.length) tabela = sh.tables[0];
+    });
+  } catch (x) { console.log('tabela: ' + x); }
+  if (tabela && r > tabela.range.endRowIndex) {
+    try {
+      Sheets.Spreadsheets.batchUpdate({ requests: [{ appendCells: { tableId: tabela.tableId, fields: 'userEnteredValue,userEnteredFormat.numberFormat',
+        rows: [{ values: valores.map(function (v) {
+          if (v instanceof Date) return { userEnteredValue: { numberValue: (v.getTime() - v.getTimezoneOffset() * 60000) / 86400000 + 25569 },
+            userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/MM/yyyy' } } };
+          return { userEnteredValue: { stringValue: String(v) } };
+        }) }] } }] }, ss.getId());
+      return;
+    } catch (x) { console.log('appendCells: ' + x); }
+  }
+  aba.getRange(r, 1, 1, valores.length).setValues([valores]);
+  var cD = valores.findIndex(function (v) { return v instanceof Date; });
+  if (cD >= 0) aba.getRange(r, cD + 1).setNumberFormat('dd/MM/yyyy');
 }
 
 // ===== App da Web =====
@@ -1507,5 +1659,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }
