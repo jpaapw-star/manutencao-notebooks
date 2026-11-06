@@ -27,16 +27,20 @@ var ABA = 'APARELHOS';
 var ABA_NOMES_ANTIGOS = ['EQUIPAMENTOS'];
 var FINALIZADO = 'FINALIZADO';
 var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
-var COLUNAS = ['DATA ENTRADA', 'TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO', 'EAN', 'SERIAL', 'NF', 'GARANTIA', 'DEFEITO',
-  'TÉCNICO', 'SITUAÇÃO', 'LOCAL', 'PEÇAS',
-  'O QUE FOI FEITO / NOTAS', 'ÚLTIMA ATUALIZAÇÃO', 'COMBINA COM'];
+// DEFEITO e LOCAL saíram (pedido do João, 05/11/2026): o defeito agora é a primeira observação.
+var COLUNAS = ['DATA ENTRADA', 'TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO', 'EAN', 'SERIAL', 'NF', 'GARANTIA',
+  'TÉCNICO', 'SITUAÇÃO', 'DEFEITO',
+  'O QUE FOI FEITO / NOTAS', 'ÚLTIMA ATUALIZAÇÃO'];
 // Colunas que o app preenche sozinho (acrescentadas no fim se faltarem).
-var COLUNAS_AUTO = ['COMBINA COM'];
+// COMBINA COM saiu das abas (pedido do João): os grupos ficam só na aba COMPATÍVEIS e no app.
+var COLUNAS_AUTO = [];
 // Colunas que só o app escreve: PEÇAS (previsão), NOTAS (montada das observações) e COMBINA COM.
 var NOTAS = 'O QUE FOI FEITO / NOTAS';
-var COLUNAS_DO_APP = ['PEÇAS', NOTAS, 'COMBINA COM'];
+// DEFEITO = previsão das peças com defeito (antes se chamava PEÇAS; o nome mudou a pedido do João em 05/11/2026).
+var COL_DEF = 'DEFEITO';
+var COLUNAS_DO_APP = [COL_DEF, NOTAS, 'COMBINA COM'];
 var OBS = 'OBSERVAÇÕES';
-var VERSAO_PLANILHA = '10';
+var VERSAO_PLANILHA = '11';
 var DATAS = ['DATA ENTRADA', 'ÚLTIMA ATUALIZAÇÃO'];
 // Produtos em garantia ficam na aba GARANTIA e os de sucata na aba SUCATA (mesmas colunas), não em APARELHOS.
 var ABA_GARANTIA = 'GARANTIA';
@@ -339,7 +343,7 @@ function combinacoes(itens) {
     var sit = String(it['SITUAÇÃO'] || '').trim().toUpperCase();
     if (sit === 'FINALIZADO') return;
     var m = modeloChave_(it.MODELO);
-    var pecas = pecasDaColuna(it['PEÇAS']);
+    var pecas = pecasDaColuna(it[COL_DEF]);
     if (!m || !pecas.length) return;
     abertos.push({ i: i, m: m, pecas: pecas, serial: String(it.SERIAL || '').trim() || ('linha ' + (it._linha || i + 2)), sucata: sit === 'SUCATA' });
   });
@@ -372,7 +376,7 @@ function planosDeMontagem(itens, estoque, compat) {
     var m = modeloChave_(it.MODELO);
     if (sit === 'FINALIZADO' || !m) return;
     lista.push({ i: i, m: m, t: semAcento_(it.TIPO).trim(), modelo: String(it.MODELO || '').trim(), serial: String(it.SERIAL || '').trim() || ('linha ' + it._linha),
-      aba: it._aba || '', linha: it._linha, pecas: pecasDaColuna(it['PEÇAS']), sucata: sit === 'SUCATA', usadas: {}, doou: false, montado: false,
+      aba: it._aba || '', linha: it._linha, pecas: pecasDaColuna(it[COL_DEF]), sucata: sit === 'SUCATA', usadas: {}, doou: false, montado: false,
       medidas: medidasDoItem(it) });
   });
   // Peça comprada em estoque também conta como doador (só da peça dela, nos modelos em que serve).
@@ -503,7 +507,7 @@ function medidasBatem(tipo, a, b) {
 
 /** Medidas do aparelho pelo que está escrito nele (modelo, descrição, defeito, notas). */
 function medidasDoItem(it) {
-  return medidas([it.MODELO, it['DESCRIÇÃO'], it.DEFEITO, it[NOTAS]].join(' '));
+  return medidas([it.MODELO, it['DESCRIÇÃO'], it[NOTAS]].join(' '));
 }
 
 /** Linhas da aba PEÇAS em objetos simples. */
@@ -532,7 +536,7 @@ function aparelhosParaPecas(estoque, itens, compat) {
     if (e.usada || !e.tipo) return '';
     return itens.filter(function (it) {
       var sit = semAcento_(it['SITUAÇÃO']).trim();
-      return sit !== 'FINALIZADO' && sit !== 'SUCATA' && pecasDaColuna(it['PEÇAS']).indexOf(e.tipo) >= 0 && compradaServe(e, it, compat);
+      return sit !== 'FINALIZADO' && sit !== 'SUCATA' && pecasDaColuna(it[COL_DEF]).indexOf(e.tipo) >= 0 && compradaServe(e, it, compat);
     }).map(function (it) { return String(it.SERIAL || '').trim() + (it.MODELO ? ' (' + it.MODELO + ')' : ''); }).join('\n');
   });
 }
@@ -652,6 +656,9 @@ function prepararPlanilha_() {
     o.getRange('E:E').setWrap(true);
     migrarNotas_(ss, aba);
   }
+  removerDefeitoLocal_(ss, [aba].concat(extras));
+  cab = cabecalho_(aba);
+  cN = cab.indexOf(NOTAS) + 1;
   // Célula de notas compacta: uma linha por observação, sem quebrar o texto.
   if (cN > 0) [aba].concat(extras).forEach(function (x) {
     x.getRange(1, cN, x.getMaxRows(), 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP).setVerticalAlignment('top');
@@ -671,13 +678,13 @@ function linhasCompativeis(planos, itens) {
     var a = porSerial[p.serial] || {};
     var de = {}, ordem = [];
     p.recebe.forEach(function (r) { if (!de[r.de]) { de[r.de] = []; ordem.push(r.de); } de[r.de].push(r.peca); });
-    out.push({ grupo: g, valores: [g + 1, 'MONTAR', p.serial, p.modelo, a._aba || '', a['SITUAÇÃO'] || '', String(a['PEÇAS'] || ''),
+    out.push({ grupo: g, valores: [g + 1, 'MONTAR', p.serial, p.modelo, a._aba || '', a['SITUAÇÃO'] || '', String(a[COL_DEF] || ''),
       'Recebe ' + p.recebe.map(function (r) { return r.peca; }).join(', ') + ' de ' + ordem.length + (ordem.length === 1 ? ' doador' : ' doadores')] });
     ordem.forEach(function (s) {
       var b = porSerial[s] || {};
       var comprada = /^PEÇA COMPRADA/.test(s);
       out.push({ grupo: g, valores: [g + 1, comprada ? 'PEÇA COMPRADA' : String(b['SITUAÇÃO'] || '').toUpperCase() === 'SUCATA' ? 'DOADOR (SUCATA)' : 'DOADOR', s, b.MODELO || (comprada ? '' : p.modelo),
-        b._aba || (comprada ? 'PEÇAS' : ''), b['SITUAÇÃO'] || (comprada ? 'EM ESTOQUE' : ''), String(b['PEÇAS'] || ''), 'Dá ' + de[s].join(', ') + ' para ' + p.serial + (b.MODELO && modeloChave_(b.MODELO) !== modeloChave_(p.modelo) ? ' (outro modelo, mesma peça)' : '')] });
+        b._aba || (comprada ? 'PEÇAS' : ''), b['SITUAÇÃO'] || (comprada ? 'EM ESTOQUE' : ''), String(b[COL_DEF] || ''), 'Dá ' + de[s].join(', ') + ' para ' + p.serial + (b.MODELO && modeloChave_(b.MODELO) !== modeloChave_(p.modelo) ? ' (outro modelo, mesma peça)' : '')] });
     });
   });
   return out;
@@ -706,7 +713,7 @@ function pesquisarIrmaos_(ss, limite) {
     var sit = semAcento_(it['SITUAÇÃO']).trim();
     var cod = codigosModelo_(it.MODELO)[0];
     if (feitas >= limite || !cod || sit === 'FINALIZADO' || sit === 'SUCATA') return;
-    pecasDaColuna(it['PEÇAS']).forEach(function (p) {
+    pecasDaColuna(it[COL_DEF]).forEach(function (p) {
       var chave = 'irm:' + p + ':' + cod;
       if (feitas >= limite || vistos[chave] || compat.universais.indexOf(p) >= 0 || props.getProperty(chave)) return;
       vistos[chave] = true;
@@ -746,11 +753,11 @@ function preverComIA_(ss, limite) {
     var sit = semAcento_(it['SITUAÇÃO']).trim();
     if (feitas >= limite || sit === 'FINALIZADO' || sit === 'SUCATA') return;
     var textos = obsDoItem_(mapa, it).map(function (o) { return o.texto; });
-    var tudo = [it.DEFEITO].concat(textos).join(' ').trim();
-    if (tudo.length < 4 || preverPecas(it.DEFEITO, textos, extras).pecas.length) return;
-    var chave = chavePrevisao_(it.DEFEITO, textos);
+    var tudo = textos.join(' ').trim();
+    if (tudo.length < 4 || preverPecas('', textos, extras).pecas.length) return;
+    var chave = chavePrevisao_('', textos);
     if (props.getProperty(chave) !== null) return;
-    var t = pesquisarIA_(k, 'Notebook em manutenção. Defeito e anotações dos técnicos, em ordem:\n' + [it.DEFEITO].concat(textos).filter(String).join('\n') +
+    var t = pesquisarIA_(k, 'Notebook em manutenção. Defeito e anotações dos técnicos, em ordem:\n' + textos.filter(String).join('\n') +
       '\n\nQuais peças provavelmente estão com defeito? Use só nomes desta lista: ' + nomes.join(', ') + '.\n' +
       'Uma linha por peça, no formato PEÇA = palavra ou trecho curto (até 4 palavras) copiado do texto que indica isso. ' +
       'Sem texto extra. Se não der para saber, responda NADA.', []);
@@ -874,13 +881,43 @@ function migrarNotas_(ss, aba) {
   d.itens.forEach(function (it) {
     var data = it['ÚLTIMA ATUALIZAÇÃO'] || it['DATA ENTRADA'] || '';
     var lista = notasAntigas(it[NOTAS], data, it['TÉCNICO']);
-    var pc = String(it['PEÇAS'] || '').trim();
+    var pc = String(it['PEÇAS'] || '').trim();   // coluna antiga (antes de virar DEFEITO)
     if (pc) lista.push({ data: data, tecnico: it['TÉCNICO'] || '', texto: 'Peças com defeito: ' + pc });
     lista.forEach(function (o) {
       linhas.push([paraData_(o.data), o.tecnico, chaveObs_(it), it.MODELO || '', o.texto, 'PLANILHA']);
     });
   });
   if (linhas.length) ss.getSheetByName(OBS).getRange(2, 1, linhas.length, 6).setValues(linhas);
+}
+
+/**
+ * Tira as colunas DEFEITO e LOCAL das abas de dados. O que estava escrito em DEFEITO vira a primeira observação do aparelho
+ * (data de entrada, técnico do aparelho, origem DEFEITO), para a previsão das peças continuar lendo. LOCAL só sai.
+ */
+function removerDefeitoLocal_(ss, abas) {
+  abas.forEach(function (x) {
+    var cab = cabecalho_(x);
+    ['LOCAL', 'COMBINA COM'].forEach(function (nome) {
+      var j = cabecalho_(x).indexOf(nome);
+      if (j >= 0) x.deleteColumn(j + 1);
+    });
+    cab = cabecalho_(x);
+    if (cab.indexOf('PEÇAS') < 0) return;           // já migrada: DEFEITO aqui é a previsão
+    var jD = cab.indexOf('DEFEITO');
+    if (jD >= 0 && x.getLastRow() > 1) {
+      var vals = x.getRange(2, 1, x.getLastRow() - 1, cab.length).getValues();
+      var mapa = lerObs_(ss);
+      vals.forEach(function (l, i) {
+        var d = String(l[jD] || '').trim();
+        if (!d) return;
+        var it = { _linha: i + 2 };
+        cab.forEach(function (h, j) { it[h] = l[j]; });
+        adicionarObs_(ss, it, [{ data: it['DATA ENTRADA'] || new Date(), tecnico: it['TÉCNICO'] || '', texto: 'Defeito: ' + d, origem: 'DEFEITO' }], mapa);
+      });
+    }
+    if (jD >= 0) x.deleteColumn(jD + 1);
+    x.getRange(1, cabecalho_(x).indexOf('PEÇAS') + 1).setValue(COL_DEF);
+  });
 }
 
 function paraData_(v) {
@@ -904,10 +941,23 @@ function lerObs_(ss) {
     if (!k || !String(l[4]).trim()) return;
     (mapa[k] = mapa[k] || []).push({ data: l[0], tecnico: String(l[1] || ''), texto: String(l[4]), origem: String(l[5] || '') });
   });
+  Object.keys(mapa).forEach(function (k) { mapa[k] = ordenarObs(mapa[k]); });
   return mapa;
 }
 
 function obsDoItem_(mapa, it) { return mapa[normalizarSerial(chaveObs_(it))] || []; }
+
+/** Observações em ordem de dia; no mesmo dia, o defeito de entrada vem antes. Ordem da aba no resto. Pura. */
+function ordenarObs(lista) {
+  var dia = function (d) {
+    if (d instanceof Date) return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+    var m = String(d || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    return m ? +m[3] * 10000 + +m[2] * 100 + +m[1] : 0;
+  };
+  return lista.map(function (o, i) { return { o: o, i: i, d: dia(o.data), p: o.origem === 'DEFEITO' ? 0 : 1 }; })
+    .sort(function (a, b) { return (a.d && b.d ? a.d - b.d : 0) || a.p - b.p || a.i - b.i; })
+    .map(function (x) { return x.o; });
+}
 
 /** Acrescenta observações (sem repetir texto igual do mesmo aparelho). Retorna quantas entraram. */
 function adicionarObs_(ss, it, lista, mapa) {
@@ -1150,7 +1200,7 @@ function recalcular_(ss) {
   var mapa = lerObs_(ss);
   var extras = palavrasExtras(listas_(ss)['PALAVRAS DAS PEÇAS']);
   var props = PropertiesService.getScriptProperties().getProperties();
-  var cP = d.cab.indexOf('PEÇAS'), cN = d.cab.indexOf(NOTAS), cC = d.cab.indexOf('COMBINA COM');
+  var cP = d.cab.indexOf(COL_DEF), cN = d.cab.indexOf(NOTAS), cC = d.cab.indexOf('COMBINA COM');
   var abas = {}, notas = {};
   abasDados_(ss).forEach(function (a) {
     abas[a.getName()] = a;
@@ -1161,9 +1211,9 @@ function recalcular_(ss) {
     var obs = obsDoItem_(mapa, it);
     if (cP >= 0) {
       var textos = obs.map(function (o) { return o.texto; });
-      var ia = props[chavePrevisao_(it.DEFEITO, textos)];
-      var p = previsaoFinal(preverPecas(it.DEFEITO, textos, extras), ia ? ia.split(',').filter(String) : []).texto;
-      if (String(it['PEÇAS'] || '') !== p) { it['PEÇAS'] = p; aba.getRange(it._linha, cP + 1).setValue(p); }
+      var ia = props[chavePrevisao_('', textos)];
+      var p = previsaoFinal(preverPecas('', textos, extras), ia ? ia.split(',').filter(String) : []).texto;
+      if (String(it[COL_DEF] || '') !== p) { it[COL_DEF] = p; aba.getRange(it._linha, cP + 1).setValue(p); }
     }
     if (cN >= 0 && obs.length) {
       var c = celulaNotas(obs), n = notaCompleta(obs);
@@ -1175,11 +1225,6 @@ function recalcular_(ss) {
   escreverCompativeis_(ss, d.itens, est, compat);
   escreverPecas_(ss, d, est, compat);
   try { registrarArrumados_(d.itens, mapa); } catch (x) { console.log('manutenções do mês: ' + x); }
-  if (cC < 0) return;
-  var comb = combinacoes(d.itens);
-  d.itens.forEach(function (it, i) {
-    if (String(it['COMBINA COM'] || '') !== comb[i]) abas[it._aba].getRange(it._linha, cC + 1).setValue(comb[i]);
-  });
 }
 
 // ===== Planilha de manutenções do mês (MANUTENÇÕES INFORMATICA GERAL) =====
@@ -1277,7 +1322,7 @@ function registrarArrumados_(itens, mapa) {
     if (!ja[sn]) {
       var textos = obsDoItem_(mapa, it).map(function (o) { return o.texto; });
       var escrito = marcas['prod:' + sn];
-      acrescentarLinha_(ss, aba, linhaManutencao(cab, it, escrito || descricaoReparo(it['PEÇAS'], textos, it.DEFEITO), dataHoje));
+      acrescentarLinha_(ss, aba, linhaManutencao(cab, it, escrito || descricaoReparo(it[COL_DEF], textos, ''), dataHoje));
       ja[sn] = true;
       feitos++;
     }
@@ -1354,12 +1399,16 @@ function apiInicio() {
   itens.forEach(function (it) {
     var o = obsDoItem_(mapa, it);
     it._obs = obsParaTela_(o);
-    it._sugestao = descricaoReparo(it['PEÇAS'], o.map(function (x) { return x.texto; }), it.DEFEITO);
+    it._sugestao = descricaoReparo(it[COL_DEF], o.map(function (x) { return x.texto; }), '');
   });
   var est = lerEstoque_(ss), compat = lerCompat_(ss);
   var montagens = planosDeMontagem(d.itens, est, compat);
+  // COMBINA COM não fica mais na planilha: calculado só para o app.
+  var comb = combinacoes(d.itens), combDe = {};
+  d.itens.forEach(function (it, i) { combDe[it._aba + ':' + it._linha] = comb[i]; });
+  itens.forEach(function (it) { it['COMBINA COM'] = combDe[it._aba + ':' + it._linha] || ''; });
   itens.forEach(function (it) {
-    it._compradas = est.filter(function (e) { return !e.usada && e.tipo && pecasDaColuna(it['PEÇAS']).indexOf(e.tipo) >= 0 && compradaServe(e, it, compat); })
+    it._compradas = est.filter(function (e) { return !e.usada && e.tipo && pecasDaColuna(it[COL_DEF]).indexOf(e.tipo) >= 0 && compradaServe(e, it, compat); })
       .map(function (e) { return e.peca + (e.codigo ? ' · ' + e.codigo : ''); });
   });
   montagens.forEach(function (m, g) { m.cor = CORES_GRUPOS[g % CORES_GRUPOS.length]; });
@@ -1624,16 +1673,16 @@ function aplicarNota_(n) {
   var notas = n.entradas.map(function (e) { return { data: e.data, tecnico: tec, texto: e.texto, origem: 'OUTRO PROJETO' }; });
   // A análise das peças feita no outro projeto entra como observação (a previsão lê e respeita).
   if (n.pecas) notas.push({ data: new Date(), tecnico: tec, texto: 'Peças com defeito: ' + n.pecas, origem: 'OUTRO PROJETO' });
+  if (n.defeito) notas.unshift({ data: new Date(), tecnico: tec, texto: 'Defeito: ' + n.defeito, origem: 'DEFEITO' });
   var ja = apiBuscar(n.serial);
   if (!ja) {
-    var novo = { SERIAL: n.serial.toUpperCase(), MODELO: n.modelo || '', DEFEITO: n.defeito || '', 'TÉCNICO': tec,
+    var novo = { SERIAL: n.serial.toUpperCase(), MODELO: n.modelo || '', 'TÉCNICO': tec,
       'SITUAÇÃO': (n.situacao || 'EM REPARO').toUpperCase(), _notas: notas };
     var r = apiSalvar(novo, tec + ' (notas)');
     return { ok: r.ok, serial: n.serial, criado: true };
   }
   var mud = { _linha: ja._linha, _aba: ja._aba, _serial: ja.SERIAL, _notas: notas };
   if (n.situacao && ENCERRADAS.indexOf(String(ja['SITUAÇÃO']).toUpperCase()) < 0) mud['SITUAÇÃO'] = n.situacao.toUpperCase();
-  if (n.defeito && !String(ja.DEFEITO || '').trim()) mud.DEFEITO = n.defeito;
   if (n.modelo && !String(ja.MODELO || '').trim()) mud.MODELO = n.modelo;
   var r2 = apiSalvar(mud, tec + ' (notas)');
   return { ok: r2.ok, serial: n.serial, nada: !!r2.nada };
@@ -1680,5 +1729,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }

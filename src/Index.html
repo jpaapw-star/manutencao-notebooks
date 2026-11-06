@@ -101,7 +101,7 @@ var S = { listas:{}, itens:[], filtro:'ABA:APARELHOS', tecnico:'', atual:null };
 var ENCERRADAS = ['FINALIZADO', 'SUCATA'];
 var CAMPOS = [
   ['SERIAL','text'], ['TIPO','lista'], ['MARCA','lista+'], ['MODELO','text'], ['NF','text'], ['DESCRIÇÃO','text'], ['EAN','text'],
-  ['GARANTIA','lista'], ['DEFEITO','defeito'], ['TÉCNICO','lista+'], ['LOCAL','lista']
+  ['GARANTIA','lista'], ['TÉCNICO','lista+']
 ];
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -143,8 +143,8 @@ var CAMPOS_REPARO = ['TÉCNICO', 'MARCA', 'MODELO', 'SERIAL'];
 function aplicarModo(){
   var rep = S.sit === 'REPARADO';
   $('form').classList.toggle('reparo', rep);
-  $('lNota').textContent = rep ? 'O QUE FOI FEITO (VAI PARA A PLANILHA DE PRODUÇÃO)' : 'NOVA OBSERVAÇÃO';
-  $('f_nota').placeholder = rep ? 'Ex.: TROCA DE TELA E REPARO NA INTERFACE DE ÁUDIO' : 'O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok';
+  $('lNota').textContent = rep ? 'O QUE FOI FEITO (VAI PARA A PLANILHA DE PRODUÇÃO)' : S.atual ? 'NOVA OBSERVAÇÃO' : 'DEFEITO';
+  $('f_nota').placeholder = rep ? 'Ex.: TROCA DE TELA E REPARO NA INTERFACE DE ÁUDIO' : S.atual ? 'O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok' : 'O defeito que apareceu. Toque abaixo ou dite pelo microfone';
   if (rep && !$('f_nota').value.trim() && S.atual && S.atual._sugestao) $('f_nota').value = S.atual._sugestao;
   if (rep && !valorCampo('TÉCNICO') && S.tecnico) porCampo('TÉCNICO', S.tecnico);
 }
@@ -172,11 +172,11 @@ function desenhar(){
     return s === S.filtro;
   })).filter(function(i){
     if (!q) return true;
-    return (qn.length >= 3 && norm(i.SERIAL).indexOf(qn) >= 0) || sem([i.MODELO, i['DESCRIÇÃO'], i.DEFEITO, i['PEÇAS'], i.MARCA, i['TÉCNICO']].join(' ')).indexOf(q) >= 0;
+    return (qn.length >= 3 && norm(i.SERIAL).indexOf(qn) >= 0) || sem([i.MODELO, i['DESCRIÇÃO'], i.DEFEITO, i.MARCA, i['TÉCNICO']].join(' ')).indexOf(q) >= 0;
   }).slice().reverse();
   $('lista').innerHTML = lista.length ? lista.map(function(i){
     var t = [i.MARCA, i.MODELO].filter(Boolean).join(' ') || i['DESCRIÇÃO'] || i.TIPO || 'Aparelho';
-    var l2 = [i['SITUAÇÃO'], String(i['PEÇAS'] || '').split('|')[0].trim() || i.DEFEITO, i['TÉCNICO']].filter(Boolean).join(' · ');
+    var l2 = [i['SITUAÇÃO'], String(i.DEFEITO || '').split('|')[0].trim(), i['TÉCNICO']].filter(Boolean).join(' · ');
     if (i['COMBINA COM']) l2 += ' · ⇄ combina com ' + String(i['COMBINA COM']).split('\n').length;
     return '<button class="item" data-l="' + esc(i._aba + ':' + i._linha) + '"><b>' + esc(t) + '</b> <span style="color:var(--fraco)">' + esc(i.SERIAL||'') + '</span><div class="l2">' + esc(l2) + '</div></button>';
   }).join('') : '<div class="vazio">' + (q ? 'Nada encontrado. Toque em "Novo aparelho" para cadastrar.' : 'Nenhum aparelho aqui.') + '</div>';
@@ -229,7 +229,7 @@ function abrir(item){
   $('tituloItem').textContent = item ? (it.SERIAL || 'Aparelho') : 'Novo aparelho';
   var h = '';
   h += '<div class="nr">';
-  if (item && it['PEÇAS']) h += '<label>PEÇAS COM DEFEITO (PREVISÃO)</label><div class="notas combina">' + esc(String(it['PEÇAS']).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">Sai do defeito e das observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
+  if (item && it.DEFEITO) h += '<label>DEFEITO (PREVISÃO DAS PEÇAS)</label><div class="notas combina">' + esc(String(it.DEFEITO).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">Sai do defeito e das observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
   if (item && (it._compradas || []).length) h += '<label>PEÇA COMPRADA QUE SERVE</label><div class="notas combina">' + esc(it._compradas.join('\n')) + '</div>';
   if (item && it['COMBINA COM']) h += '<label>COMBINA COM (MESMO MODELO)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
   h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p></div>';
@@ -237,7 +237,7 @@ function abrir(item){
   h += '<div class="grade">';
   CAMPOS.forEach(function(c, k){
     var html = campo(c[0], c[1], it[c[0]]), nr = CAMPOS_REPARO.indexOf(c[0]) < 0 ? ' class="nr"' : '';
-    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO' || c[0]==='DEFEITO') ? '</div><div' + nr + '>' + html + '</div><div class="grade">' : '<div' + nr + '>' + html + '</div>';
+    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO') ? '</div><div' + nr + '>' + html + '</div><div class="grade">' : '<div' + nr + '>' + html + '</div>';
   });
   h += '</div>';
   var obs = (it._obs || []).slice().reverse();
@@ -250,7 +250,9 @@ function abrir(item){
   $('form').innerHTML = h;
   $('fotoEtiqueta').onclick = function(){ escolherFoto(preencherDaEtiqueta); };
   // Defeitos comuns: um toque acrescenta no campo (dá para ditar pelo microfone do teclado também).
-  var fd = $('f_DEFEITO');
+  // Sem campo DEFEITO: o defeito é escrito como observação (a primeira, num aparelho novo). Os defeitos comuns ficam embaixo dela.
+  var fd = $('f_nota');
+  if (!item) { $('lNota').textContent = 'DEFEITO'; }
   if (fd) {
     var box = document.createElement('div'); box.className = 'sits'; box.style.marginTop = '8px';
     (S.listas['DEFEITOS COMUNS'] || []).slice(0, 14).forEach(function(d){
@@ -258,8 +260,9 @@ function abrir(item){
       b.onclick = function(){ var v = fd.value.trim(); if (sem(v).indexOf(sem(d)) < 0) fd.value = v ? v + ', ' + d : d; };
       box.appendChild(b);
     });
-    fd.parentNode.insertBefore(box, fd.nextSibling.nextSibling);
-    fd.placeholder = 'Toque abaixo ou dite pelo microfone';
+    box.classList.add('nr');
+    fd.parentNode.insertBefore(box, fd.nextSibling);
+    if (!item) fd.placeholder = 'O defeito que apareceu. Toque abaixo ou dite pelo microfone';
   }
   Array.prototype.forEach.call($('sits').children, function(b){ b.onclick = function(){ S.sit = b.getAttribute('data-s'); Array.prototype.forEach.call($('sits').children, function(x){ x.classList.toggle('on', x===b); }); aplicarModo(); }; });
   aplicarModo();
