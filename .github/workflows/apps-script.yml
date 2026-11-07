@@ -6,6 +6,10 @@ name: Apps Script
 on:
   push:
   workflow_dispatch:
+  # De hora em hora: busca anotações que o outro projeto gravou em qualquer branch
+  # (a branch dele pode não ter este arquivo, e aí o push sozinho não dispara nada).
+  schedule:
+    - cron: '17 * * * *'
 
 concurrency:
   group: apps-script-${{ github.ref }}
@@ -36,7 +40,7 @@ jobs:
 
   enviar:
     needs: testes
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -92,7 +96,7 @@ jobs:
 
   site:
     needs: enviar
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
@@ -123,11 +127,33 @@ jobs:
           # Compara com o que havia antes do push (vários commits de uma vez contam todos).
           # Branch nova: compara com a main.
           if echo "$ANTES" | grep -q '^0*$' || ! git cat-file -e "$ANTES" 2>/dev/null; then ANTES=$(git merge-base HEAD origin/main 2>/dev/null || echo HEAD~1); fi
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            # Só manda se alguma branch mudou notas/ na última hora e pouco.
+            if [ -n "$(git log --remotes --since='75 minutes ago' --format=%H -- notas/)" ]; then echo "sim=1" >> "$GITHUB_OUTPUT"; else echo "Anotações sem mudança."; fi
+            exit 0
+          fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || git diff --name-only "$ANTES" HEAD 2>/dev/null | grep -q '^notas/'; then
             echo "sim=1" >> "$GITHUB_OUTPUT"
           else
             echo "Anotações sem mudança."
           fi
+      - name: Juntar as anotações de todas as branches
+        if: steps.mudou.outputs.sim == '1'
+        run: |
+          # Cada notas/<SERIAL>.md pode estar em qualquer branch (o outro projeto grava na dele).
+          # Vale a versão do commit mais novo de cada arquivo.
+          mkdir -p notas
+          declare -A quando
+          for b in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v '/HEAD$'); do
+            for f in $(git ls-tree --name-only "$b" notas/ 2>/dev/null | grep -i '\.md$' | grep -vi 'leia-me'); do
+              t=$(git log -1 --format=%ct "$b" -- "$f")
+              if [ -z "${quando[$f]}" ] || [ "$t" -gt "${quando[$f]}" ]; then
+                quando[$f]=$t
+                git show "$b:$f" > "$f"
+              fi
+            done
+          done
+          ls notas/
       - uses: actions/setup-node@v4
         if: steps.mudou.outputs.sim == '1'
         with:
