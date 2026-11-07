@@ -158,6 +158,8 @@ var PREVER = [
   ['PLACA-MÃE', ['PLACA MAE', 'PLACA-MAE', 'MOTHERBOARD', 'CORROID', 'OXIDAD', 'MOLHAD', 'CAIU AGUA', 'CAIU LIQUIDO'], ['NAO LIGA', 'EM CURTO', 'NAO ACENDE', 'PLACA MORTA'], []]
 ];
 var P_IGNORA = /ESPERADO|SO PARA TESTE|PARA TESTAR/;
+// Condição do teste, não peça com defeito: "não liga mesmo (conectado) ao carregador" fala do aparelho, não do carregador.
+var P_CONTEXTO = / MESMO (CONECTADO |LIGADO |PLUGADO )?(AO|NO|NA|COM O|COM A|COM) (CARREGADOR|FONTE|TOMADA) /g;
 var P_NEGA = /NAO (ESTA |ESTAVA |TA )?(FUNCION\w*|LIGA\w*|CARREG\w*|RECONHEC\w*|PEGA\w*|RESPOND\w*|ACEND\w*|ABRE|ENTRA|DA \w+)/g;
 var P_NAO_RESOLVEU = /NAO RESOLV|CONTINUA (O |COM )?(MESMO )?(DEFEITO|PROBLEMA)|MESMO DEFEITO/;
 var P_TROCA = /TROCAD|TROQUEI|SUBSTITUID|SUBSTITUI |REPARAD|REPAREI|CONSERTAD|CONSERTEI|RESOLVID|RESOLVI |ARRUMAD|ARRUMEI|REGRAVAD|REGRAVEI|REBALLING|PECA NOVA|COLOQUEI (UM|UMA|OUTR)/;
@@ -181,6 +183,7 @@ function lerFrase_(frase, naoResolveu, lista) {
   var t = ' ' + semAcento_(frase).replace(/[^A-Z0-9-]+/g, ' ').trim() + ' ';
   var out = {};
   if (t.trim().length < 2 || P_IGNORA.test(t)) return out;
+  t = t.replace(P_CONTEXTO, ' ');
   var s = t.replace(P_NEGA, ' DEFX ');
   (lista || PREVER).forEach(function (p) {
     var limpo = t;

@@ -307,3 +307,9 @@ test('planilha de manutenções: aba do mês e descrição no jeito dela', () =>
     ['JOÃO PEDRO', 'ASUS', 'E1504FA', 'W6N0B', d, 'TROCA DE TELA', '', '', '']);
   assert.strictEqual(linhaManutencao(['TECNICO', 'MARCA', 'MODELO', 'SÉRIE', 'DATA', 'DEFEITO'], { SERIAL: 'X1' }, 'Y', d)[3], 'X1');
 });
+
+test('previsão: "não liga mesmo ao carregador" não acusa o carregador', () => {
+  assert.strictEqual(preverPecas('NÃO LIGA MESMO AO CARREGADOR', []).texto, 'PLACA-MÃE (SUSPEITA)');
+  assert.strictEqual(preverPecas('não ligava mesmo conectado ao carregador', []).texto, 'PLACA-MÃE (SUSPEITA)');
+  assert.strictEqual(preverPecas('CARREGADOR NÃO FUNCIONA', []).texto, 'CARREGADOR (CONFIRMADA)');
+});
