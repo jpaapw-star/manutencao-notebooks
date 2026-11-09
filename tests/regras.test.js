@@ -318,3 +318,16 @@ test('resumo do que foi feito no jeito da planilha de produção', () => {
   assert.strictEqual(resumoProducao('não carregava, refiz a solda do conector de carga'), 'REPARO NO CIRCUITO DE CARGA');
   assert.strictEqual(resumoProducao('fiz uma oração'), '');
 });
+
+test('serial da IA: P/N da Dell não vira serial', () => {
+  const { serialDaIA } = m.exports;
+  assert.strictEqual(serialDaIA('4D25F', 'DELL'), '');
+  assert.strictEqual(serialDaIA('61rqjh4', 'ALIENWARE'), '61RQJH4');
+  assert.strictEqual(serialDaIA('NXKMDAL0014159468C9501', 'ACER'), 'NXKMDAL0014159468C9501');
+});
+
+test('EAN da IA: número de pedido não vira EAN', () => {
+  const { eanDaIA } = m.exports;
+  assert.strictEqual(eanDaIA('401868317'), '');
+  assert.strictEqual(eanDaIA('7899864955259'), '7899864955259');
+});

@@ -1551,7 +1551,8 @@ function apiBuscar(serial) {
 
 var IA_MODELOS = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-flash-lite-latest', 'gemini-flash-latest'];
 var IA_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
-var IA_ETIQUETA = ['gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-3.1-flash-lite-preview', 'gemini-flash-lite-latest'];
+// Medido em 09/11/2026 com fotos reais (CI 'Medir a IA'): flash-lite-latest lê certo em ~1 s; 3-flash com thinking minimal travava 60-90 s.
+var IA_ETIQUETA = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-flash-latest'];
 
 function iaChave_() { return (typeof SEGREDOS !== 'undefined' && SEGREDOS.iaChave) || ''; }
 
@@ -1562,6 +1563,19 @@ function apiIaLigada() { return !!iaChave_(); }
  * Lê a foto da etiqueta com a IA e devolve { SERIAL, EAN, MARCA, MODELO, DESCRIÇÃO } (vazio = não achou).
  * jaLido: o que o código de barras já leu (vai como dica, a IA só confirma/completa).
  */
+/** EAN que a IA leu: só 8, 12, 13 ou 14 dígitos (número de pedido, PO etc. não servem). Pura. */
+function eanDaIA(v) {
+  var e = String(v || '').replace(/\D/g, '');
+  return /^(\d{8}|\d{12,14})$/.test(e) ? e : '';
+}
+
+/** Serial que a IA leu, sem os enganos comuns: Dell/Alienware só aceita Service Tag de 7 caracteres (P/N tem 5). Pura. */
+function serialDaIA(serial, marca) {
+  var sn = String(serial || '').toUpperCase().replace(/\s+/g, '');
+  if (/DELL|ALIENWARE/.test(String(marca || '').toUpperCase()) && !/^[A-Z0-9]{7}$/.test(sn)) return '';
+  return sn;
+}
+
 function apiLerComIA(base64, jaLido) {
   var k = iaChave_();
   if (!k) return { erro: 'A IA não está ligada nesta publicação.' };
@@ -1571,20 +1585,21 @@ function apiLerComIA(base64, jaLido) {
     codigos.concat(jaLido.ean ? ['EAN ' + jaLido.ean] : []).join(', ') + '.' : '';
   var texto = 'Foto da etiqueta de um notebook, console ou acessório em manutenção. Leia:\n' +
     '- serial: o número de série impresso ao lado de S/N, SN, Serial No. ou Service Tag (Dell, 7 caracteres). ' +
-    'NÃO é o P/N, PN, Part No., SKU, SNID (Acer), UPC, EAN, MAC, IMEI nem o código do modelo. Asus costuma ter 15 caracteres (ex. W6N0B605436627B), ' +
+    'NÃO é o P/N, PN, Part No., DP/N, SKU, SNID (Acer), UPC, EAN, MAC, IMEI, Order, PO nem o código do modelo. Se a foto não mostra o serial, deixe vazio. Asus costuma ter 15 caracteres (ex. W6N0B605436627B), ' +
     'Acer 22 (ex. NXKMDAL0014159468C9501), Lenovo 8 (ex. PF4ABC12), Positivo 9 (ex. 4AK45WJ6S).\n' +
     '- ean: código de barras de 8 a 14 dígitos (EAN/UPC), se houver.\n' +
-    '- marca.\n' +
-    '- modelo: o código do modelo (Model, Modelo, MOD), ex. E1504FA, A315-510P, 15IRH10, C4128E. Não use o P/N.\n' +
+    '- marca: a fabricante (Alienware e Inspiron são DELL; Legion e IdeaPad são LENOVO; Predator e Nitro são ACER; ROG e TUF são ASUS).\n' +
+    '- tipo: NOTEBOOK, DESKTOP, MONITOR, PLAYSTATION, XBOX, NINTENDO ou CONTROLE.\n' +
+    '- modelo: o código do modelo (Model, Modelo, MOD), ex. E1504FA, A315-510P, 15IRH10, C4128E; na caixa da Dell do Brasil é o código grande tipo AC16-C7240H-D30 ou I15-I120K-A25P. Não use o P/N.\n' +
     '- descricao: curta (processador, memória, armazenamento, se aparecerem).\n' +
     'Copie letra por letra exatamente o que está impresso, sem trocar O por 0 nem I por 1 por conta própria; não invente. Deixe vazio o que não aparece.' + dica;
-  var esquema = { type: 'OBJECT', properties: { serial: { type: 'STRING' }, ean: { type: 'STRING' }, marca: { type: 'STRING' }, modelo: { type: 'STRING' }, descricao: { type: 'STRING' } } };
+  var esquema = { type: 'OBJECT', properties: { serial: { type: 'STRING' }, ean: { type: 'STRING' }, marca: { type: 'STRING' }, tipo: { type: 'STRING' }, modelo: { type: 'STRING' }, descricao: { type: 'STRING' } } };
   var partes = [{ text: texto }, { inline_data: { mime_type: 'image/jpeg', data: String(base64 || '').replace(/^data:[^,]*,/, '') } }];
   var erro = '';
   // Etiqueta pede leitura caprichada: começa pelo modelo mais forte; os "lite" ficam de reserva.
   var ordem = IA_ETIQUETA;
   for (var i = 0; i < ordem.length; i++) {
-    var modos = ['minimal', ''];
+    var modos = [''];   // sem thinkingConfig: com ele o 3-flash travava e o flash-latest dá 400
     for (var j = 0; j < modos.length; j++) {
       var cfg = { temperature: 0, responseMimeType: 'application/json', responseSchema: esquema };
       if (modos[j]) cfg.thinkingConfig = { thinkingLevel: modos[j] };
@@ -1601,11 +1616,13 @@ function apiLerComIA(base64, jaLido) {
       try {
         var t = JSON.parse(r.getContentText()).candidates[0].content.parts[0].text;
         var o = JSON.parse(t);
+        if (!o.serial && !o.modelo && !o.ean && i < ordem.length - 1) { erro = ordem[i] + ' não leu nada'; break; }
         return {
-          SERIAL: String(o.serial || '').toUpperCase().replace(/\s+/g, ''),
-          EAN: String(o.ean || '').replace(/\D/g, ''),
+          SERIAL: serialDaIA(o.serial, o.marca),
+          EAN: eanDaIA(o.ean),
           MARCA: String(o.marca || '').toUpperCase(),
           MODELO: String(o.modelo || '').toUpperCase(),
+          TIPO: String(o.tipo || '').toUpperCase(),
           'DESCRIÇÃO': String(o.descricao || '').toUpperCase(),
           modelo_ia: ordem[i]
         };
@@ -1846,5 +1863,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }

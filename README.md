@@ -18,6 +18,10 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 | `src/Index.html` | Tela do app |
 | `scripts/enviar-notas.js` | Manda `notas/` para o app (usado pelo GitHub) |
 
+## 1.15.0: leitura da etiqueta mais rápida e sem confundir P/N
+
+Medido com fotos reais (job de CI "Medir a IA nas fotos de etiqueta", fotos em tests/etiquetas): gemini-flash-lite-latest lê em ~1 s; o 3-flash com thinking travava 60-90 s e o app desistia. Ordem nova começando pelo lite, sem thinkingConfig. Dell/Alienware: serial só o Service Tag de 7 caracteres (P/N 4D25F não entra). EAN só com 8/12/13/14 dígitos. A IA também diz o TIPO.
+
 ## 1.13.0: resumo do que foi feito na planilha de produção
 
 Ao marcar REPARADO, o técnico escreve do jeito dele. Na coluna DESCRIÇÃO da planilha MANUTENÇÕES INFORMATICA GERAL vai só o resumo no padrão da planilha (ex.: "REPARO NA INTERFACE DE ÁUDIO", "TROCA DE SSD E FORMATAÇÃO DO SISTEMA", "REPARO NO CIRCUITO DE CARGA"). Regras primeiro; a IA só entra quando as regras não conseguem. O texto inteiro continua nas observações. O app mostra, ao salvar, o que vai para a planilha.
