@@ -1632,6 +1632,52 @@ function apiLerComIA(base64, jaLido) {
   return { erro: 'A IA não respondeu agora (' + erro + '). Tente de novo em alguns segundos.' };
 }
 
+/**
+ * Descrição do aparelho pelo modelo (a etiqueta quase nunca traz a configuração): nome comercial + processador, memória,
+ * armazenamento, placa de vídeo e tela, pesquisado com a busca do Google. Uma pesquisa por modelo (guardada).
+ */
+function apiDescricaoDoModelo(marca, modelo) {
+  var mod = String(modelo || '').toUpperCase().trim();
+  if (mod.length < 4) return '';
+  var props = PropertiesService.getScriptProperties();
+  var chave = 'desc:' + mod.slice(0, 80);
+  var ja = props.getProperty(chave);
+  if (ja !== null) return ja;
+  var k = iaChave_();
+  if (!k) return '';
+  var t = pesquisarIA_(k, perguntaDescricao(marca, mod));
+  if (t !== null) { var d = descricaoDaResposta(t); props.setProperty(chave, d); return d; }
+  // Busca do Google sem cota agora: só o nome comercial e a tela (a IA não inventa a configuração).
+  // Fica guardado só por 6 h, para depois a busca completar.
+  var cache = CacheService.getScriptCache(), ck = 'descSemBusca:' + mod.slice(0, 80);
+  var c = cache.get(ck);
+  if (c !== null) return c;
+  t = pesquisarIA_(k, perguntaDescricao(marca, mod, true), []);
+  if (t === null) return '';                     // IA fora do ar: tenta de novo outra vez
+  var curta = descricaoDaResposta(t);
+  cache.put(ck, curta, 21600);
+  return curta;
+}
+
+/** Pergunta da descrição pelo modelo. Pura. */
+function perguntaDescricao(marca, modelo, semBusca) {
+  var nome = [marca, modelo].filter(String).join(' ');
+  if (semBusca) return 'Notebook/aparelho ' + nome + ' (código de modelo da Dell/Lenovo/Acer/Asus/Positivo do Brasil). ' +
+    'Sem inventar configuração (o mesmo modelo vem com processador e memória diferentes): responda UMA linha curta em MAIÚSCULAS só com NOME COMERCIAL, TELA. ' +
+    'Ex.: ACER ASPIRE 5 A515-45, 15,6". Sem frase, sem ponto final. Se não tiver certeza do nome, responda só NADA.';
+  return 'Pesquise o notebook/aparelho ' + [marca, modelo].filter(String).join(' ') + ' (pode ser código de modelo da Dell/Lenovo/Acer/Asus/Positivo do Brasil). ' +
+    'Responda UMA linha curta em MAIÚSCULAS no formato: NOME COMERCIAL, PROCESSADOR, MEMÓRIA, ARMAZENAMENTO, PLACA DE VÍDEO (só se dedicada), TELA. ' +
+    'Ex.: ASPIRE GO 15 AG15-51P-39MU, INTEL CORE I3 N305, 8GB, SSD 512GB, 15,6". Sem frase, sem ponto final. Se não achar esse modelo exato, responda só NADA.';
+}
+
+/** Limpa a resposta da IA para a célula DESCRIÇÃO. Pura. */
+function descricaoDaResposta(t) {
+  var l = String(t || '').split('\n').map(function (x) { return x.trim(); }).filter(String)[0] || '';
+  l = l.replace(/\*\*/g, '').replace(/^[*"'\s-]+|[*'.\s]+$/g, '').replace(/([^\d])"+$/, '$1').trim().toUpperCase();
+  if (!l || /^NADA\b/.test(l) || l.length > 140) return '';
+  return l;
+}
+
 /** O que a planilha já sabe de um EAN (último aparelho com ele): tipo, marca, modelo, descrição. */
 function apiPorEan(ean) {
   var e = String(ean || '').replace(/\D/g, '').replace(/^0(\d{13})$/, '$1');
@@ -1783,7 +1829,7 @@ function doPost(e) {
   // Chamadas do site do app (endereço próprio no GitHub Pages): mesmas funções da tela, sem login.
   if (corpo.api) {
     var API = { apiInicio: apiInicio, apiBuscar: apiBuscar, apiPorEan: apiPorEan, apiIaLigada: apiIaLigada,
-      apiLerComIA: apiLerComIA, apiSalvar: apiSalvar, apiSincronizar: apiSincronizar };
+      apiLerComIA: apiLerComIA, apiDescricaoDoModelo: apiDescricaoDoModelo, apiSalvar: apiSalvar, apiSincronizar: apiSincronizar };
     if (!API[corpo.api]) return json_({ ok: false, erro: 'função desconhecida' });
     try {
       prepararPlanilha_();
@@ -1863,5 +1909,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { perguntaDescricao: perguntaDescricao, descricaoDaResposta: descricaoDaResposta, eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }

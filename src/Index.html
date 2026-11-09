@@ -253,6 +253,9 @@ function abrir(item){
   // Notebook com duas etiquetas: depois da 1ª foto o botão vira "Foto de outra etiqueta" e a 2ª só completa o que faltou.
   S.fotosLidas = 0;
   $('fotoEtiqueta').onclick = function(){ escolherFoto(preencherDaEtiqueta); };
+  // Modelo digitado à mão também puxa a descrição.
+  completarDescricao.feito = '';
+  if ($('f_MODELO')) $('f_MODELO').addEventListener('change', completarDescricao);
   // Defeitos comuns: um toque acrescenta no campo (dá para ditar pelo microfone do teclado também).
   // Sem campo DEFEITO: o defeito é escrito como observação (a primeira, num aparelho novo). Os defeitos comuns ficam embaixo dela.
   var fd = $('f_nota');
@@ -427,11 +430,12 @@ function preencherDaEtiqueta(r){
     if (!d) return;
     ['TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO', 'SERIAL', 'EAN'].forEach(function(k){ porCampo(k, d[k]); });
     var sel = $('f_TIPO'); if (sel && d.TIPO && !sel.value) { var o = document.createElement('option'); o.text = d.TIPO; o.selected = true; sel.add(o); }
+    completarDescricao();
   };
   // IA do SCAN só quando o código de barras não resolveu (sem serial ou modelo desconhecido).
   var ia = function(){
     // Pula a IA só quando o código de barras deu um serial com cara de serial de marca conhecida e o modelo já é conhecido.
-    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO') && (outra || marcaPeloSerial(valorCampo('SERIAL'))))) return;
+    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO') && (outra || marcaPeloSerial(valorCampo('SERIAL'))))) { completarDescricao(); return; }
     var c = r.canvas, k = Math.min(1, 2000 / Math.max(c.width, c.height)), z = document.createElement('canvas');
     z.width = Math.round(c.width * k); z.height = Math.round(c.height * k); z.getContext('2d').drawImage(c, 0, 0, z.width, z.height);
     aviso('Lendo o texto da etiqueta com IA…');
@@ -451,6 +455,13 @@ function preencherDaEtiqueta(r){
   };
   if (r.ean) chamar('apiPorEan', [r.ean], function(d){ preencher(d); ia(); }, ia);
   else ia();
+}
+// A etiqueta quase nunca traz a configuração: com o modelo lido, pesquisa a descrição (uma vez por modelo, fica guardada).
+function completarDescricao(){
+  var mod = valorCampo('MODELO');
+  if (!S.ia || !mod || valorCampo('DESCRIÇÃO') || completarDescricao.feito === mod) return;
+  completarDescricao.feito = mod;
+  chamar('apiDescricaoDoModelo', [valorCampo('MARCA'), mod], function(d){ if (d && !valorCampo('DESCRIÇÃO') && valorCampo('MODELO') === mod) { porCampo('DESCRIÇÃO', d); aviso('Descrição: ' + d); } }, function(){});
 }
 $('ler').style.display = '';
 $('ler').textContent = 'Foto';
