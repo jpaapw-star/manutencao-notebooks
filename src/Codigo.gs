@@ -1645,17 +1645,26 @@ function apiDescricaoDoModelo(marca, modelo) {
   if (ja !== null) return ja;
   var k = iaChave_();
   if (!k) return '';
-  var pergunta = perguntaDescricao(marca, mod);
-  var t = pesquisarIA_(k, pergunta);
-  if (t === null) t = pesquisarIA_(k, pergunta, []); // busca do Google sem cota: usa o que a IA já sabe
+  var t = pesquisarIA_(k, perguntaDescricao(marca, mod));
+  if (t !== null) { var d = descricaoDaResposta(t); props.setProperty(chave, d); return d; }
+  // Busca do Google sem cota agora: só o nome comercial e a tela (a IA não inventa a configuração).
+  // Fica guardado só por 6 h, para depois a busca completar.
+  var cache = CacheService.getScriptCache(), ck = 'descSemBusca:' + mod.slice(0, 80);
+  var c = cache.get(ck);
+  if (c !== null) return c;
+  t = pesquisarIA_(k, perguntaDescricao(marca, mod, true), []);
   if (t === null) return '';                     // IA fora do ar: tenta de novo outra vez
-  var d = descricaoDaResposta(t);
-  props.setProperty(chave, d);
-  return d;
+  var curta = descricaoDaResposta(t);
+  cache.put(ck, curta, 21600);
+  return curta;
 }
 
 /** Pergunta da descrição pelo modelo. Pura. */
-function perguntaDescricao(marca, modelo) {
+function perguntaDescricao(marca, modelo, semBusca) {
+  var nome = [marca, modelo].filter(String).join(' ');
+  if (semBusca) return 'Notebook/aparelho ' + nome + ' (código de modelo da Dell/Lenovo/Acer/Asus/Positivo do Brasil). ' +
+    'Sem inventar configuração (o mesmo modelo vem com processador e memória diferentes): responda UMA linha curta em MAIÚSCULAS só com NOME COMERCIAL, TELA. ' +
+    'Ex.: ACER ASPIRE 5 A515-45, 15,6". Sem frase, sem ponto final. Se não tiver certeza do nome, responda só NADA.';
   return 'Pesquise o notebook/aparelho ' + [marca, modelo].filter(String).join(' ') + ' (pode ser código de modelo da Dell/Lenovo/Acer/Asus/Positivo do Brasil). ' +
     'Responda UMA linha curta em MAIÚSCULAS no formato: NOME COMERCIAL, PROCESSADOR, MEMÓRIA, ARMAZENAMENTO, PLACA DE VÍDEO (só se dedicada), TELA. ' +
     'Ex.: ASPIRE GO 15 AG15-51P-39MU, INTEL CORE I3 N305, 8GB, SSD 512GB, 15,6". Sem frase, sem ponto final. Se não achar esse modelo exato, responda só NADA.';
