@@ -1645,7 +1645,9 @@ function apiDescricaoDoModelo(marca, modelo) {
   if (ja !== null) return ja;
   var k = iaChave_();
   if (!k) return '';
-  var t = pesquisarIA_(k, perguntaDescricao(marca, mod));
+  var pergunta = perguntaDescricao(marca, mod);
+  var t = pesquisarIA_(k, pergunta);
+  if (t === null) t = pesquisarIA_(k, pergunta, []); // busca do Google sem cota: usa o que a IA já sabe
   if (t === null) return '';                     // IA fora do ar: tenta de novo outra vez
   var d = descricaoDaResposta(t);
   props.setProperty(chave, d);
