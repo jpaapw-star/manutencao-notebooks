@@ -35,6 +35,11 @@ jobs:
           head -c 300 resposta.json | tee -a "$GITHUB_STEP_SUMMARY"
           echo; echo "IA pelo site (foto vazia, só para ver se a IA tem permissão):"
           curl -sL -H "Content-Type: text/plain;charset=utf-8" --data '{"api":"apiLerComIA","args":["",{}]}' "$URL" | head -c 400 | tee -a "$GITHUB_STEP_SUMMARY"
+          for f in tests/etiquetas/*.jpg; do
+            echo; echo "Etiqueta $f:"
+            node -e 'const fs=require("fs");process.stdout.write(JSON.stringify({api:"apiLerComIA",args:["data:image/jpeg;base64,"+fs.readFileSync(process.argv[1]).toString("base64"),{}]}))' "$f" > corpo.json
+            curl -sL -H "Content-Type: text/plain;charset=utf-8" --data @corpo.json "$URL" | head -c 600 | tee -a "$GITHUB_STEP_SUMMARY"
+          done
 
   enviar:
     needs: testes
