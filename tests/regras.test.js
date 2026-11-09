@@ -307,3 +307,14 @@ test('planilha de manutenções: aba do mês e descrição no jeito dela', () =>
     ['JOÃO PEDRO', 'ASUS', 'E1504FA', 'W6N0B', d, 'TROCA DE TELA', '', '', '']);
   assert.strictEqual(linhaManutencao(['TECNICO', 'MARCA', 'MODELO', 'SÉRIE', 'DATA', 'DEFEITO'], { SERIAL: 'X1' }, 'Y', d)[3], 'X1');
 });
+
+test('resumo do que foi feito no jeito da planilha de produção', () => {
+  const { resumoProducao } = m.exports;
+  assert.strictEqual(resumoProducao('NOTEBOOK APRESENTAVA AÚDIO FORA DO PADRÃO, FORAM FEITAS ATUALIZAÇÕES DE DRIVERS DA FABRICANTE E REINICIALIZAÇÃO DO SISTEMA, REALIZAÇÕES DE TESTES FORAM FEITAS E O PRODUTO VOLTOU PARA A QUALIDADE ORIGINAL'), 'REPARO NA INTERFACE DE ÁUDIO');
+  assert.strictEqual(resumoProducao('troquei a tela, testei o audio e o wifi ok'), 'TROCA DE TELA');
+  assert.strictEqual(resumoProducao('TROCA DE TELA E ARO'), 'TROCA DE TELA E ARO');
+  assert.strictEqual(resumoProducao('wifi não conectava, troquei a placa de rede e formatei'), 'TROCA DE PLACA DE REDE E FORMATAÇÃO DO SISTEMA');
+  assert.strictEqual(resumoProducao('ssd corrompido, troquei por um novo e instalei o windows'), 'TROCA DE SSD E FORMATAÇÃO DO SISTEMA');
+  assert.strictEqual(resumoProducao('não carregava, refiz a solda do conector de carga'), 'REPARO NO CIRCUITO DE CARGA');
+  assert.strictEqual(resumoProducao('fiz uma oração'), '');
+});

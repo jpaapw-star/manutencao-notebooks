@@ -1271,6 +1271,99 @@ function descricaoReparo(pecas, textos, defeito) {
   return String(ult ? resumoObs(ult, 90) : (defeito || 'REPARO')).toUpperCase();
 }
 
+// ===== Resumo do que foi feito, no jeito da coluna DESCRIÇÃO da planilha de produção =====
+// O técnico escreve livre ("notebook apresentava áudio fora do padrão, atualizei os drivers..."),
+// e na planilha vai só o resumo: "REPARO NA INTERFACE DE ÁUDIO", "TROCA DE TELA E ARO",
+// "FORMATAÇÃO DO SISTEMA E REPARO NA INTERFACE DE REDE". O texto inteiro fica nas observações.
+
+// Área → [nome na "INTERFACE DE …", palavras da área, [palavra da peça, nome da peça na TROCA]...]
+var AREAS_REPARO = [
+  ['ÁUDIO', /\b(AUDIO|SOM|ALTO[ -]?FALANTES?|AUTO[ -]?FALANTES?|FALANTES?|MICROFONES?|P2|FONE)\b/,
+    [[/\b(ALTO[ -]?FALANTES?|AUTO[ -]?FALANTES?|FALANTES?)\b/, 'AUTOFALANTES'], [/\bMICROFONES?\b/, 'MICROFONE']]],
+  ['VÍDEO', /\b(VIDEO|IMAGEM|TELA|DISPLAY|LCD|GPU|PLACA DE VIDEO|HDMI)\b/,
+    [[/\b(TELA|DISPLAY|LCD)\b/, 'TELA'], [/\bFLAT\b/, 'FLAT DA TELA']]],
+  ['REDE', /\b(REDE|WI-?FI|WIRELESS|INTERNET|ETHERNET|BLUETOOTH)\b/,
+    [[/\b(PLACA DE REDE|PLACA WI-?FI|PLACA DE WI-?FI|PLACA WIRELESS|MODULO WI-?FI)\b/, 'PLACA DE REDE']]],
+  ['TECLADO', /\b(TECLADO|TECLAS?|BORBOLETAS?|KEYCAPS?)\b/,
+    [[/\bBORBOLETAS?\b/, 'BORBOLETA DA TECLA'], [/\bKEYCAPS?\b/, 'KEYCAP'], [/\bTECLADO\b/, 'TECLADO']]],
+  ['TOUCHPAD', /\b(TOUCH ?PAD|MOUSE PAD)\b/, [[/\b(TOUCH ?PAD|MOUSE PAD)\b/, 'TOUCHPAD']]],
+  ['CARGA', /\b(CARGA|CARREGA\w*|BATERIA|CONECTOR DE ENERGIA|FONTE)\b/,
+    [[/\bBATERIA\b/, 'BATERIA'], [/\b(CONECTOR DE CARGA|CONECTOR DE ENERGIA|DC ?JACK|JACK)\b/, 'CONECTOR DE CARGA']]],
+  ['INICIALIZAÇÃO', /\b(BOOT|INICIALIZ\w*|BIOS|NAO LIGA\w*|NAO INICIA\w*)\b/, [[/\b(CHIP DA BIOS|CI DA BIOS)\b/, 'CHIP DA BIOS'], [/\b(PILHA|BATERIA CMOS)\b/, 'PILHA DA BIOS']]],
+  ['CÂMERA', /\b(WEBCAM|CAMERA)\b/, [[/\b(WEBCAM|CAMERA|MODULO DE CAMERA)\b/, 'WEBCAM']]],
+  ['ARMAZENAMENTO', /\b(SSD|HDD?|NVME|ARMAZENAMENTO)\b/, [[/\b(SSD|HDD?|NVME)\b/, 'SSD']]],
+  ['MEMÓRIA', /\b(MEMORIA|RAM|PENTE)\b/, [[/\b(MEMORIA|RAM|PENTE)\b/, 'MEMÓRIA RAM']]],
+  ['USB', /\bUSB\b/, []],
+  ['REFRIGERAÇÃO', /\b(COOLER|VENTOINHA|FAN|PASTA TERMICA|DISSIPADOR)\b/, [[/\bPASTA TERMICA\b/, 'PASTA TÉRMICA'], [/\b(COOLER|VENTOINHA|FAN)\b/, 'COOLER']]],
+  ['', /\b(CARCACA|ARO|DOBRADICAS?|TAMPA)\b/, [[/\bARO\b/, 'ARO'], [/\bDOBRADICAS?\b/, 'DOBRADIÇAS'], [/\b(CARCACA|TAMPA)\b/, 'CARCAÇA']]]
+];
+var R_TROCA = /\b(TROC\w*|TROQU\w*|SUBSTITU\w*|COLOQUEI|COLOCAD\w* (UM|UMA|OUTR)\w*|NOV[OA]S?)\b/;
+var R_FORMATA = /\b(FORMATA\w*|FORMATEI|REINSTAL\w*|INSTAL\w* (DO |O |UM )?(NOVO )?(WINDOWS|SISTEMA))\b/;
+var R_SO_TESTE = /\b(TESTAD\w*|TESTEI|TESTES?|OK|FUNCIONANDO|NORMAL\w*|PERFEIT\w*)\b/;
+var R_ESTILO = /^(TROCA|REPARO|FORMATA|AJUSTE|RETIRADA|RECONEX|LIMPEZA|INSTALA|ATUALIZA|REMAPEA|RECRIA|RESOLDA|SUBSTITUI)/;
+
+/**
+ * Resumo do que foi feito para a planilha de produção. Texto que já está no jeito da planilha fica como está.
+ * Retorna '' quando as regras não conseguem resumir (aí o servidor pergunta à IA). Pura.
+ */
+function resumoProducao(texto) {
+  var t = String(texto == null ? '' : texto).replace(/\s+/g, ' ').trim().toUpperCase().replace(/[.;]+$/, '');
+  if (!t) return '';
+  var u = semAcento_(t);
+  if (R_ESTILO.test(u) && t.length <= 80 && !/[.;!?]\s/.test(t) && !/\b(EU|FOI|FORAM|ESTAVA|APRESENTAVA|TROQUEI|FIZ)\b/.test(u)) return t;
+  var trocas = [], areas = [], formatou = R_FORMATA.test(u), anterior = [];
+  u.split(/[.;!?\n]+|,| E | MAS | POREM | DEPOIS /).forEach(function (fr) {
+    fr = ' ' + fr.replace(/[^A-Z0-9-]+/g, ' ').trim() + ' ';
+    if (fr.trim().length < 2) return;
+    var troca = R_TROCA.test(fr);
+    var pecas = [];
+    AREAS_REPARO.forEach(function (a) { a[2].forEach(function (pc) { if (pc[0].test(fr) && pecas.indexOf(pc[1]) < 0) pecas.push(pc[1]); }); });
+    // "SSD corrompido, troquei por um novo": a peça veio no pedaço de antes.
+    var trocadas = troca ? (pecas.length ? pecas : anterior) : [];
+    anterior = pecas;
+    trocadas.forEach(function (pc) { if (trocas.indexOf(pc) < 0) trocas.push(pc); });
+    if (trocadas.length) return;
+    if (R_SO_TESTE.test(fr) && !/\b(FORA DO PADRAO|DEFEITO|NAO FUNCION\w*|FALH\w*|RUIM|BAIXO|CHIAD\w*|SEM)\b/.test(fr)) return;
+    AREAS_REPARO.forEach(function (a) {
+      if (a[0] && a[1].test(fr) && areas.indexOf(a[0]) < 0) areas.push(a[0]);
+    });
+  });
+  // Peça trocada já explica a área dela (troca de tela não vira também "reparo na interface de vídeo").
+  areas = areas.filter(function (ar) {
+    var a = AREAS_REPARO.filter(function (x) { return x[0] === ar; })[0];
+    return !a[2].some(function (pc) { return trocas.indexOf(pc[1]) >= 0; });
+  });
+  if (formatou) areas = areas.filter(function (ar) { return ar !== 'INICIALIZAÇÃO'; });
+  var partes = [];
+  if (trocas.length) partes.push('TROCA DE ' + listaPt_(trocas));
+  if (formatou) partes.push('FORMATAÇÃO DO SISTEMA');
+  var carga = areas.indexOf('CARGA') >= 0;   // na planilha é "REPARO NO CIRCUITO DE CARGA"
+  areas = areas.filter(function (ar) { return ar !== 'CARGA'; });
+  if (areas.length) partes.push('REPARO NA INTERFACE DE ' + listaPt_(areas));
+  if (carga) partes.push('REPARO NO CIRCUITO DE CARGA');
+  return partes.length > 2 ? partes.slice(0, -1).join(', ') + ' E ' + partes[partes.length - 1] : partes.join(' E ');
+}
+
+// Exemplos reais da coluna DESCRIÇÃO (planilha MANUTENÇÕES INFORMATICA GERAL), para a IA copiar o jeito.
+var EXEMPLOS_PRODUCAO = ['REPARO NA INTERFACE DE ÁUDIO', 'TROCA DE TELA', 'TROCA DE SSD E PLACA DE REDE', 'REPARO NA INTERFACE DE VÍDEO, REDE E ÁUDIO',
+  'FORMATAÇÃO DO SISTEMA E REPARO NA INTERFACE DE REDE', 'REPARO NA INTERFACE DE INICIALIZAÇÃO E FORMATAÇÃO DO SISTEMA', 'TROCA DE BATERIA',
+  'REPARO NO CIRCUITO DE CARGA', 'TROCA DA BORBOLETA DA TECLA', 'TROCA DE KEYCAP', 'AJUSTE DE CARCAÇA FORA DO ARO', 'TROCA DE MEMÓRIA RAM',
+  'REPARO NA INTERFACE DE TOUCHPAD', 'TROCA DE CI PU501 CI DE CARGA', 'RETIRADA DE BLOQUEIO DO TPM VIA FIRMWARE', 'TROCA DE TELA E ARO',
+  'REPARO NA INTERFACE DE WIFI', 'TROCA DE WEBCAM', 'TROCA DE AUTOFALANTES', 'TROCA DE SSD E REPARO NA INTERFACE DE ÁUDIO'];
+
+/** Resumo para a planilha de produção: regras primeiro; se não der, a IA (uma vez); se nada der, o começo do texto. */
+function resumirProducao_(texto) {
+  var r = resumoProducao(texto);
+  if (r) return r;
+  var k = iaChave_();
+  var t = k ? pesquisarIA_(k, 'Resuma em UMA linha curta, em MAIÚSCULAS, o que o técnico fez no notebook, no mesmo jeito destes exemplos ' +
+    '(só o serviço feito, sem sintomas, sem testes, sem ponto final):\n' + EXEMPLOS_PRODUCAO.join('\n') +
+    '\n\nTexto do técnico:\n' + texto + '\n\nResponda só a linha.', []) : null;
+  t = String(t || '').split('\n')[0].replace(/^["'\s-]+|["'.\s]+$/g, '').toUpperCase();
+  if (t && t.length <= 90) return t;
+  return resumoObs(String(texto).toUpperCase(), 80).replace(/…$/, '');
+}
+
 /** Linha da planilha de manutenções na ordem do cabeçalho daquela aba (nomes de coluna variam de mês para mês). Pura. */
 function linhaManutencao(cab, it, descricao, data) {
   return cab.map(function (h) {
@@ -1547,7 +1640,8 @@ function apiSalvar(item, tecnico) {
   try {
     // O que foi feito, escrito ao marcar REPARADO: vira a DESCRIÇÃO na planilha de produção.
     var sn0 = normalizarSerial(item.SERIAL || item._serial);
-    if (item._producao && sn0) PropertiesService.getScriptProperties().setProperty('prod:' + sn0, String(item._producao).trim().toUpperCase());
+    var producao = item._producao ? resumirProducao_(item._producao) : '';
+    if (producao && sn0) PropertiesService.getScriptProperties().setProperty('prod:' + sn0, producao);
     var ss = planilha_();
     var aba = abaDe_(ss, item._linha ? item._aba : ABA);
     var cab = cabecalho_(aba);
@@ -1583,7 +1677,7 @@ function apiSalvar(item, tecnico) {
       historico_(ss, tecnico, serial, 'CADASTRO', '', item['SITUAÇÃO']);
       adicionarObs_(ss, { SERIAL: serial, MODELO: item.MODELO, _linha: r }, notasDoPedido_(item, tecnico, agora));
       recalcular_(ss);
-      return { ok: true, linha: r };
+      return { ok: true, linha: r, producao: producao };
     }
     var r2 = Number(item._linha);
     var atual = aba.getRange(r2, 1, 1, cab.length).getValues()[0];
@@ -1608,12 +1702,12 @@ function apiSalvar(item, tecnico) {
     var it2 = { SERIAL: atual[cSerial], MODELO: cM >= 0 ? atual[cM] : '', _linha: r2 };
     if (mudouCol.SERIAL) renomearObs_(ss, normalizarSerial(item._serial) || ('LINHA ' + r2), chaveObs_(it2));
     if (adicionarObs_(ss, it2, notasDoPedido_(item, tecnico, agora))) mudou = true;
-    if (!mudou) return { ok: true, linha: r2, nada: true };
+    if (!mudou) return { ok: true, linha: r2, nada: !producao, producao: producao };
     var cu = cab.indexOf('ÚLTIMA ATUALIZAÇÃO');
     if (cu >= 0) atual[cu] = agora;
     aba.getRange(r2, 1, 1, cab.length).setValues([atual]);
     recalcular_(ss);
-    return { ok: true, linha: r2 };
+    return { ok: true, linha: r2, producao: producao };
   } finally {
     lock.releaseLock();
   }
@@ -1752,5 +1846,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }
