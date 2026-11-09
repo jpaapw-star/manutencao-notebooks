@@ -1224,7 +1224,7 @@ function recalcular_(ss) {
   var est = lerEstoque_(ss), compat = lerCompat_(ss);
   escreverCompativeis_(ss, d.itens, est, compat);
   escreverPecas_(ss, d, est, compat);
-  try { registrarArrumados_(d.itens, mapa); } catch (x) { console.log('manutenções do mês: ' + x); }
+  try { registrarArrumados_(d.itens, mapa, ss); } catch (x) { console.log('manutenções do mês: ' + x); }
 }
 
 // ===== Planilha de manutenções do mês (MANUTENÇÕES INFORMATICA GERAL) =====
@@ -1290,24 +1290,24 @@ function linhaManutencao(cab, it, descricao, data) {
  * Se voltar para uma situação em aberto, pode entrar de novo quando for arrumado outra vez.
  * Não mexe em nada que já está lá: só acrescenta linhas, e cria a aba do mês (cópia do cabeçalho do mês anterior) quando falta.
  */
-function registrarArrumados_(itens, mapa) {
+function registrarArrumados_(itens, mapa, ssManut) {
   var props = PropertiesService.getScriptProperties();
   var marcas = props.getProperties();
   var hoje = new Date();
   var mesAtual = Utilities.formatDate(hoje, 'America/Sao_Paulo', 'MM/yyyy');
-  var novos = [];
+  var novos = [], sair = [];
   itens.forEach(function (it) {
     var sn = normalizarSerial(it.SERIAL);
     if (!sn) return;
     var chave = 'arr:' + sn;
     var feito = ARRUMADO.indexOf(semAcento_(it['SITUAÇÃO']).trim()) >= 0;
     if (!feito) { if (marcas[chave]) props.deleteProperty(chave); return; }
-    if (marcas[chave]) return;
+    if (marcas[chave]) { sair.push(it); return; }   // já está na planilha de produção: sai da planilha de defeitos
     // Só o que foi arrumado neste mês (o que é mais antigo já devia estar na planilha).
-    if (String(it['ÚLTIMA ATUALIZAÇÃO'] || '').slice(3) !== mesAtual) { props.setProperty(chave, 'antigo'); return; }
+    if (String(it['ÚLTIMA ATUALIZAÇÃO'] || '').slice(3) !== mesAtual) { props.setProperty(chave, 'antigo'); sair.push(it); return; }
     novos.push(it);
   });
-  if (!novos.length) return 0;
+  if (!novos.length) { if (ssManut) tirarReparados_(ssManut, sair); return 0; }
   var ss = SpreadsheetApp.openById(PLANILHAS.ARRUMADOS);
   var nome = abaDoMes(hoje);
   var aba = ss.getSheetByName(nome) || criarAbaDoMes_(ss, nome);
@@ -1328,8 +1328,31 @@ function registrarArrumados_(itens, mapa) {
     }
     props.setProperty('arr:' + sn, Utilities.formatDate(hoje, 'America/Sao_Paulo', 'dd/MM/yyyy'));
     props.deleteProperty('prod:' + sn);
+    sair.push(it);
   });
+  if (ssManut) tirarReparados_(ssManut, sair);
   return feitos;
+}
+
+/**
+ * Regra do João (09/11/2026): aparelho REPARADO vai para a planilha de produção e NÃO fica na planilha de defeitos.
+ * Só sai depois de gravado lá. A linha inteira fica no HISTÓRICO (para recuperar) e as observações continuam na aba OBSERVAÇÕES.
+ */
+function tirarReparados_(ss, lista) {
+  var porAba = {};
+  lista.forEach(function (it) { if (it._aba && it._linha) (porAba[it._aba] = porAba[it._aba] || []).push(it); });
+  Object.keys(porAba).forEach(function (nome) {
+    var aba = ss.getSheetByName(nome);
+    if (!aba) return;
+    porAba[nome].sort(function (a, b) { return b._linha - a._linha; }).forEach(function (it) {
+      var sn = normalizarSerial(aba.getRange(it._linha, cabecalho_(aba).indexOf('SERIAL') + 1).getValue());
+      if (sn !== normalizarSerial(it.SERIAL)) return;   // a planilha mudou no meio: não apaga a linha errada
+      var copia = {};
+      Object.keys(it).forEach(function (k) { if (k.charAt(0) !== '_' && it[k] !== '' && it[k] != null) copia[k] = it[k]; });
+      historico_(ss, 'AUTOMÁTICO', it.SERIAL, 'SAIU (REPARADO, FOI PARA A PLANILHA DE PRODUÇÃO)', JSON.stringify(copia), nome);
+      aba.deleteRow(it._linha);
+    });
+  });
 }
 
 /** Cria a aba do mês copiando a aba do mês mais recente e limpando só os dados (cabeçalho, tabela e formatação ficam). */

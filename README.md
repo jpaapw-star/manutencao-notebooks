@@ -40,3 +40,6 @@ Quando um aparelho passa para REPARADO (FINALIZADO não entra e não aparece mai
 
 ### Colunas (1.11.0)
 LOCAL e COMBINA COM saíram das abas APARELHOS, GARANTIA e SUCATA. A antiga coluna DEFEITO (texto livre) também saiu: o que estava escrito virou a primeira observação de cada aparelho ("Defeito: ...", com a data de entrada). A coluna PEÇAS passou a se chamar **DEFEITO** e continua com a previsão das peças. Num aparelho novo, o defeito é escrito no campo DEFEITO do app, que vira a primeira observação. Os grupos de quem combina ficam só na aba COMPATÍVEIS e no app.
+
+### Reparados saem da planilha de defeitos (1.12.0)
+Regra do João (09/11): depois que um aparelho REPARADO é gravado na planilha de produção (MANUTENÇÕES INFORMATICA GERAL), a linha dele sai das abas APARELHOS, GARANTIA e SUCATA. A linha inteira fica guardada no HISTÓRICO e as observações continuam na aba OBSERVAÇÕES. Se a gravação na planilha de produção falhar, a linha fica até dar certo.
