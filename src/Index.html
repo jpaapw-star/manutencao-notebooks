@@ -127,13 +127,18 @@ function chamar(fn, args, ok, erro){
 
 function carregar(depois){
   chamar('apiInicio', [], function(d){
+    aplicarInicio(d);
+    // Guarda a lista no aparelho: na próxima abertura a tela aparece na hora e atualiza sozinha.
+    guardar('inicio', JSON.stringify(d));
+    if (depois) depois();
+  });
+}
+function aplicarInicio(d){
     S.listas = d.listas || {}; S.itens = d.itens || []; S.carregado = true; S.ia = !!d.ia; S.montagens = d.montagens || [];
     var bm = $('montar'); bm.style.display = S.montagens.length ? '' : 'none'; bm.textContent = '⇄ ' + S.montagens.length + ' para montar';
     $('sub').innerHTML = (S.tecnico ? esc(S.tecnico) + ' · <a href="#" id="trocar">trocar</a> · ' : '') + '<a href="' + esc(d.planilha) + '" target="_blank">abrir planilha</a>';
     var t = $('trocar'); if (t) t.onclick = function(e){ e.preventDefault(); pedirNome(); };
     desenhar();
-    if (depois) depois();
-  });
 }
 
 // FINALIZADO não é escolhido no app: só vem do controle de qualidade. Arrumado = REPARADO.
@@ -226,10 +231,13 @@ function campo(nome, tipo, valor){
 
 function abrir(item){
   S.atual = item || null;
-  var it = item || { 'TÉCNICO': S.tecnico, 'SITUAÇÃO': 'EM ANÁLISE', 'SERIAL': norm($('busca').value).length >= 5 ? $('busca').value.trim().toUpperCase() : '' };
+  var it = item || { 'TÉCNICO': '', 'SITUAÇÃO': 'EM ANÁLISE', 'SERIAL': norm($('busca').value).length >= 5 ? $('busca').value.trim().toUpperCase() : '' };
   S.sit = it['SITUAÇÃO'] || '';
   $('tituloItem').textContent = item ? (it.SERIAL || 'Aparelho') : 'Novo aparelho';
   var h = '';
+  // Aparelho novo: sempre pergunta quem está adicionando (nomes da aba LISTAS › TÉCNICO e da planilha de produção).
+  if (!item) h += '<label>QUEM ESTÁ ADICIONANDO?</label><div class="sits" id="quem">' + (S.listas['TÉCNICO'] || []).map(function(n){
+    return '<button class="chip" type="button">' + esc(n) + '</button>'; }).join('') + '</div>';
   h += '<div class="nr">';
   if (item && it.DEFEITO) h += '<label>DEFEITO (PREVISÃO DAS PEÇAS)</label><div class="notas combina">' + esc(String(it.DEFEITO).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">Sai do defeito e das observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
   if (item && (it._compradas || []).length) h += '<label>PEÇA COMPRADA QUE SERVE</label><div class="notas combina">' + esc(it._compradas.join('\n')) + '</div>';
@@ -272,6 +280,10 @@ function abrir(item){
     if (!item) fd.placeholder = 'O defeito que apareceu. Toque abaixo ou dite pelo microfone';
   }
   Array.prototype.forEach.call($('sits').children, function(b){ b.onclick = function(){ S.sit = b.getAttribute('data-s'); Array.prototype.forEach.call($('sits').children, function(x){ x.classList.toggle('on', x===b); }); aplicarModo(); }; });
+  if ($('quem')) Array.prototype.forEach.call($('quem').children, function(b){ b.onclick = function(){
+    var f = $('f_' + 'TÉCNICO'.replace(/\W/g,'_')); if (f) f.value = b.textContent;
+    Array.prototype.forEach.call($('quem').children, function(x){ x.classList.toggle('on', x===b); });
+  }; });
   aplicarModo();
   $('pItem').classList.add('on');
   $('pItem').scrollTop = 0;
@@ -291,10 +303,12 @@ function salvar(){
   if (nota) item._nota = nota;
   if (S.sit === 'REPARADO' && (!S.atual || S.atual['SITUAÇÃO'] !== 'REPARADO') && !nota){ aviso('Escreva o que foi feito: vai para a planilha de produção.'); $('f_nota').focus(); return; }
   if (S.sit === 'REPARADO' && nota) item._producao = nota;
-  if (nota && !S.tecnico){ aviso('Escolha seu nome antes, para a observação ficar com ele.'); pedirNome(); return; }
+  if (!S.atual && !item['TÉCNICO']){ aviso('Escolha quem está adicionando.'); $('pItem').scrollTop = 0; return; }
+  var quem = (!S.atual && item['TÉCNICO']) || S.tecnico;
+  if (nota && !quem){ aviso('Escolha seu nome antes, para a observação ficar com ele.'); pedirNome(); return; }
   if (!S.atual && !item.SERIAL && !item.MODELO) { aviso('Preencha pelo menos o serial ou o modelo.'); return; }
   $('salvar').disabled = true;
-  chamar('apiSalvar', [item, S.tecnico], function(r){
+  chamar('apiSalvar', [item, quem], function(r){
     $('salvar').disabled = false;
     if (!r.ok){
       if (r.existe){ aviso(r.erro + ' Abrindo ele.'); abrir(r.existe); return; }
@@ -490,6 +504,7 @@ $('conferir').onclick = function(){
 };
 
 S.tecnico = ler('tecnico');
+try { var guardado = ler('inicio'); if (guardado) aplicarInicio(JSON.parse(guardado)); } catch(e){}
 carregar(function(){ if (!S.tecnico) pedirNome(); });
 </script>
 </body>

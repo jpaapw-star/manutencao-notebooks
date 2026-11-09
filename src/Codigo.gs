@@ -1528,7 +1528,60 @@ function apiInicio() {
       .map(function (e) { return e.peca + (e.codigo ? ' · ' + e.codigo : ''); });
   });
   montagens.forEach(function (m, g) { m.cor = CORES_GRUPOS[g % CORES_GRUPOS.length]; });
-  return { listas: listas_(ss), itens: itens, colunas: d.cab, planilha: ss.getUrl(), ia: !!iaChave_(), montagens: montagens };
+  var listas = listas_(ss);
+  try { listas['TÉCNICO'] = tecnicos_(ss, listas['TÉCNICO'], d.itens); } catch (x) {}
+  return { listas: listas, itens: itens, colunas: d.cab, planilha: ss.getUrl(), ia: !!iaChave_(), montagens: montagens };
+}
+
+/**
+ * Nomes de quem pode adicionar: LISTAS › TÉCNICO + quem já aparece nos aparelhos + técnicos da planilha de produção
+ * (últimas 3 abas de mês, lida no máximo a cada 6 h). Nome novo é escrito na coluna TÉCNICO da aba LISTAS.
+ */
+function tecnicos_(ss, daLista, itens) {
+  var cache = CacheService.getScriptCache();
+  var prod = cache.get('tecProd');
+  if (prod === null) {
+    var out = [];
+    try {
+      var pr = SpreadsheetApp.openById(PLANILHAS.ARRUMADOS);
+      var meses = pr.getSheets().filter(function (a) { return valorMes_(a.getName()) >= 0; })
+        .sort(function (a, b) { return valorMes_(b.getName()) - valorMes_(a.getName()); }).slice(0, 3);
+      meses.forEach(function (a) {
+        var cab = cabecalho_(a), j = cab.map(semAcento_).indexOf('TECNICO');
+        if (j < 0 || a.getLastRow() < 2) return;
+        a.getRange(2, j + 1, a.getLastRow() - 1, 1).getValues().forEach(function (l) { out.push(String(l[0])); });
+      });
+    } catch (x) {}
+    prod = JSON.stringify(out);
+    cache.put('tecProd', prod, 21600);
+  }
+  var nomes = juntarNomes(daLista, (itens || []).map(function (it) { return it['TÉCNICO']; }).concat(JSON.parse(prod)));
+  var faltam = nomes.filter(function (n) { return (daLista || []).map(semAcento_).indexOf(semAcento_(n)) < 0; });
+  var l = ss.getSheetByName('LISTAS');
+  if (faltam.length && l) {
+    var j = cabecalho_(l).indexOf('TÉCNICO');
+    if (j >= 0) l.getRange((daLista || []).length + 2, j + 1, faltam.length, 1).setValues(faltam.map(function (n) { return [n]; }));
+  }
+  return nomes;
+}
+
+function valorMes_(nome) {
+  var m = semAcento_(nome).trim().match(/^([A-Z]+) (\d{4})$/);
+  var i = m ? MESES.map(semAcento_).indexOf(m[1]) : -1;
+  return i < 0 ? -1 : +m[2] * 12 + i;
+}
+
+/** Lista primeiro, depois os outros nomes sem repetir (maiúsculas, acento não conta). Pura. */
+function juntarNomes(lista, outros) {
+  var visto = {}, out = [];
+  (lista || []).concat(outros || []).forEach(function (n) {
+    n = String(n == null ? '' : n).trim().toUpperCase().replace(/\s+/g, ' ');
+    if (n.length < 2 || /^[\d\W]+$/.test(n)) return;
+    var k = semAcento_(n);
+    if (visto[k]) return;
+    visto[k] = true; out.push(n);
+  });
+  return out;
 }
 
 function obsParaTela_(obs) {
@@ -1909,5 +1962,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { perguntaDescricao: perguntaDescricao, descricaoDaResposta: descricaoDaResposta, eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { juntarNomes: juntarNomes, perguntaDescricao: perguntaDescricao, descricaoDaResposta: descricaoDaResposta, eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }
