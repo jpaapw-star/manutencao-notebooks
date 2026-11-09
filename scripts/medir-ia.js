@@ -18,7 +18,7 @@ const lista = modelos.length ? modelos : ['gemini-3.1-flash-lite-preview', 'gemi
     for (const ia of m.exports.IA_MODELOS) for (const busca of [true, false]) {
       const t0 = Date.now(); let txt = '';
       try {
-        const r = await fetch(m.exports.IA_URL + ia + ':generateContent?key=' + encodeURIComponent(chave), { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        const r = await fetch(m.exports.IA_URL + ia + ':generateContent?key=' + encodeURIComponent(chave), { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(30000),
           body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: m.exports.perguntaDescricao(marca, mod, !busca) }] }], tools: busca ? [{ google_search: {} }] : undefined, generationConfig: { temperature: 0 } }) });
         const j = await r.json();
         txt = r.status === 200 ? '=> ' + m.exports.descricaoDaResposta(j.candidates[0].content.parts.map(x => x.text || '').join(' ')) : 'HTTP ' + r.status + ' ' + String((j.error || {}).message || '').slice(0, 160);
