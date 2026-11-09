@@ -18,9 +18,11 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 | `src/Index.html` | Tela do app |
 | `scripts/enviar-notas.js` | Manda `notas/` para o app (usado pelo GitHub) |
 
-## 1.17.0: abre na hora e pergunta quem está adicionando
+## 1.17.0: abre na hora, busca mais rápida e pergunta quem está adicionando
 
 - A lista fica guardada no aparelho: ao abrir, a tela aparece na hora com a última lista e se atualiza sozinha em segundo plano.
+- Sem lista guardada, a primeira leitura traz só os aparelhos (rápida) e a tela já fica usável; observações, peças e montagens completam logo depois.
+- Busca filtra a cada letra, com o serial em qualquer parte (também EAN e NF); mostra 60 por vez. Serial que não está na tela é procurado na planilha toda.
 - Aparelho novo sempre pergunta "Quem está adicionando?" no topo, com os nomes da aba LISTAS › TÉCNICO. Os técnicos que aparecem na planilha de produção (últimos 3 meses) e nos aparelhos entram sozinhos nessa coluna.
 
 ## 1.16.0: descrição pelo modelo

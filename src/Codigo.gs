@@ -1504,13 +1504,7 @@ function doGet() {
 function apiInicio() {
   var ss = planilha_();
   var d = lerTudo_(ss);
-  var limite = new Date(Date.now() - 30 * 86400000);
-  var itens = d.itens.filter(function (it) {
-    var sit = String(it['SITUAÇÃO'] || '').toUpperCase();
-    if (ENCERRADAS.indexOf(sit) < 0 || sit === 'SUCATA') return true;   // sucata aparece sempre (aba Sucata do app)
-    var p = String(it['ÚLTIMA ATUALIZAÇÃO'] || '').split('/');
-    return p.length === 3 && new Date(+p[2], +p[1] - 1, +p[0]) >= limite;
-  });
+  var itens = itensDaTela_(d.itens);
   var mapa = lerObs_(ss);
   itens.forEach(function (it) {
     var o = obsDoItem_(mapa, it);
@@ -1531,6 +1525,29 @@ function apiInicio() {
   var listas = listas_(ss);
   try { listas['TÉCNICO'] = tecnicos_(ss, listas['TÉCNICO'], d.itens); } catch (x) {}
   return { listas: listas, itens: itens, colunas: d.cab, planilha: ss.getUrl(), ia: !!iaChave_(), montagens: montagens };
+}
+
+/** Aparelhos que a tela mostra: em aberto, sucata, e os encerrados nos últimos 30 dias. */
+function itensDaTela_(todos) {
+  var limite = new Date(Date.now() - 30 * 86400000);
+  return todos.filter(function (it) {
+    var sit = String(it['SITUAÇÃO'] || '').toUpperCase();
+    if (ENCERRADAS.indexOf(sit) < 0 || sit === 'SUCATA') return true;   // sucata aparece sempre (aba Sucata do app)
+    var p = String(it['ÚLTIMA ATUALIZAÇÃO'] || '').split('/');
+    return p.length === 3 && new Date(+p[2], +p[1] - 1, +p[0]) >= limite;
+  });
+}
+
+/**
+ * Primeira leitura, rápida: só os aparelhos e as listas (sem observações, peças e montagens).
+ * A tela já fica usável com isto; o apiInicio completo chega logo depois e completa.
+ */
+function apiRapido() {
+  var ss = planilha_();
+  var listas = listas_(ss);
+  var tp = CacheService.getScriptCache().get('tecProd');
+  if (tp) listas['TÉCNICO'] = juntarNomes(listas['TÉCNICO'], JSON.parse(tp));
+  return { listas: listas, itens: itensDaTela_(lerTudo_(ss).itens), planilha: ss.getUrl(), ia: !!iaChave_(), montagens: [], parcial: true };
 }
 
 /**
@@ -1881,7 +1898,7 @@ function doPost(e) {
   try { corpo = JSON.parse(e.postData.contents); } catch (x) { return json_({ ok: false, erro: 'JSON inválido' }); }
   // Chamadas do site do app (endereço próprio no GitHub Pages): mesmas funções da tela, sem login.
   if (corpo.api) {
-    var API = { apiInicio: apiInicio, apiBuscar: apiBuscar, apiPorEan: apiPorEan, apiIaLigada: apiIaLigada,
+    var API = { apiInicio: apiInicio, apiRapido: apiRapido, apiBuscar: apiBuscar, apiPorEan: apiPorEan, apiIaLigada: apiIaLigada,
       apiLerComIA: apiLerComIA, apiDescricaoDoModelo: apiDescricaoDoModelo, apiSalvar: apiSalvar, apiSincronizar: apiSincronizar };
     if (!API[corpo.api]) return json_({ ok: false, erro: 'função desconhecida' });
     try {
