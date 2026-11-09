@@ -250,6 +250,8 @@ function abrir(item){
   h += '<div class="rodape" style="text-align:left">Fica com seu nome e a data de hoje. As observações antigas nunca são apagadas.</div>';
   if (item) h += '<div class="rodape">Entrada ' + esc(it['DATA ENTRADA']||'—') + ' · atualizado ' + esc(it['ÚLTIMA ATUALIZAÇÃO']||'—') + '</div>';
   $('form').innerHTML = h;
+  // Notebook com duas etiquetas: depois da 1ª foto o botão vira "Foto de outra etiqueta" e a 2ª só completa o que faltou.
+  S.fotosLidas = 0;
   $('fotoEtiqueta').onclick = function(){ escolherFoto(preencherDaEtiqueta); };
   // Defeitos comuns: um toque acrescenta no campo (dá para ditar pelo microfone do teclado também).
   // Sem campo DEFEITO: o defeito é escrito como observação (a primeira, num aparelho novo). Os defeitos comuns ficam embaixo dela.
@@ -410,8 +412,11 @@ function porCampo(nome, v, sobrescrever){ var el = $('f_' + nome.replace(/\W/g, 
 /** Preenche o formulário com o que a foto leu e com o que a planilha já sabe desse EAN. */
 function preencherDaEtiqueta(r){
   if (!r.ean && !r.serial && !(S.ia && r.canvas)) { aviso('Nenhum código encontrado. Tente mais perto e com luz.'); return; }
-  if (r.serial) porCampo('SERIAL', r.serial, true);
-  if (r.ean) porCampo('EAN', r.ean, true);
+  var outra = (S.fotosLidas || 0) > 0;   // 2ª etiqueta: não apaga o que a 1ª já leu
+  S.fotosLidas = (S.fotosLidas || 0) + 1;
+  var bf = $('fotoEtiqueta'); if (bf) { bf.textContent = 'Foto de outra etiqueta'; bf.classList.add('sec'); }
+  if (r.serial) porCampo('SERIAL', r.serial, !outra);
+  if (r.ean) porCampo('EAN', r.ean, !outra);
   porCampo('MARCA', marcaPeloSerial(r.serial));
   if (r.serial || r.ean) aviso('Lido: ' + [r.serial, r.ean].filter(Boolean).join(' · '));
   if (r.serial) {
@@ -426,14 +431,14 @@ function preencherDaEtiqueta(r){
   // IA do SCAN só quando o código de barras não resolveu (sem serial ou modelo desconhecido).
   var ia = function(){
     // Pula a IA só quando o código de barras deu um serial com cara de serial de marca conhecida e o modelo já é conhecido.
-    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO') && marcaPeloSerial(valorCampo('SERIAL')))) return;
+    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO') && (outra || marcaPeloSerial(valorCampo('SERIAL'))))) return;
     var c = r.canvas, k = Math.min(1, 2000 / Math.max(c.width, c.height)), z = document.createElement('canvas');
     z.width = Math.round(c.width * k); z.height = Math.round(c.height * k); z.getContext('2d').drawImage(c, 0, 0, z.width, z.height);
     aviso('Lendo o texto da etiqueta com IA…');
     chamar('apiLerComIA', [z.toDataURL('image/jpeg', 0.92), { serial: valorCampo('SERIAL'), ean: valorCampo('EAN'), outros: r.outros || [] }], function(d){
-      if (!d || d.erro) { aviso(d && d.erro || 'A IA não leu.'); return; }
+      if (!d || d.erro) { aviso(/UrlFetchApp|external_request/.test(d && d.erro || '') ? 'A IA está sem autorização. O dono do app precisa abrir o link do Apps Script e aceitar as permissões.' : (d && d.erro || 'A IA não leu.')); return; }
       // O leitor de código de barras pode ter pego o P/N como serial: se a IA leu outro serial impresso, vale o da IA.
-      if (d.SERIAL && valorCampo('SERIAL') && norm(d.SERIAL) !== norm(valorCampo('SERIAL')) && !S.atual && $('f_SERIAL')) $('f_SERIAL').value = '';
+      if (!outra && d.SERIAL && valorCampo('SERIAL') && norm(d.SERIAL) !== norm(valorCampo('SERIAL')) && !S.atual && $('f_SERIAL')) $('f_SERIAL').value = '';
       var tinhaSerial = valorCampo('SERIAL');
       preencher(d);
       if (!tinhaSerial && d.SERIAL) {
