@@ -331,3 +331,9 @@ test('EAN da IA: número de pedido não vira EAN', () => {
   assert.strictEqual(eanDaIA('401868317'), '');
   assert.strictEqual(eanDaIA('7899864955259'), '7899864955259');
 });
+
+test('descrição pelo modelo: resposta limpa, NADA vira vazio', () => {
+  const { descricaoDaResposta } = m.exports;
+  assert.strictEqual(descricaoDaResposta('**Alienware 16 Aurora, Intel Core 7 240H, 16GB, SSD 1TB, RTX 5060, 16"**.'), 'ALIENWARE 16 AURORA, INTEL CORE 7 240H, 16GB, SSD 1TB, RTX 5060, 16"');
+  assert.strictEqual(descricaoDaResposta('NADA'), '');
+});

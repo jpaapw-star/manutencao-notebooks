@@ -18,6 +18,10 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 | `src/Index.html` | Tela do app |
 | `scripts/enviar-notas.js` | Manda `notas/` para o app (usado pelo GitHub) |
 
+## 1.16.0: descrição pelo modelo
+
+Quando a DESCRIÇÃO fica vazia (a etiqueta não traz), o app pesquisa o modelo no Google pela IA e escreve uma linha curta: nome comercial, processador, memória, armazenamento, placa de vídeo dedicada e tela. A busca é feita uma vez por modelo e fica guardada; se não achar, o campo fica vazio para digitar.
+
 ## 1.15.0: leitura da etiqueta mais rápida e sem confundir P/N
 
 Medido com fotos reais (job de CI "Medir a IA nas fotos de etiqueta", fotos em tests/etiquetas): gemini-flash-lite-latest lê em ~1 s; o 3-flash com thinking travava 60-90 s e o app desistia. Ordem nova começando pelo lite, sem thinkingConfig. Dell/Alienware: serial só o Service Tag de 7 caracteres (P/N 4D25F não entra). EAN só com 8/12/13/14 dígitos. A IA também diz o TIPO.
