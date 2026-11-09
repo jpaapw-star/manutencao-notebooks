@@ -23,6 +23,12 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+      - name: Medir a IA nas fotos de etiqueta
+        if: github.ref != 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/medir-ia.js | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Conferir se o app abre sem login
         continue-on-error: true
         run: |
@@ -33,6 +39,15 @@ jobs:
           echo "POST do site (CORS):"
           curl -sL -D - -o resposta.json -H "Origin: https://jpaapw-star.github.io" -H "Content-Type: text/plain;charset=utf-8" --data '{"api":"apiIaLigada","args":[]}' "$URL" | grep -i "^HTTP\|access-control-allow-origin\|^content-type" | tee -a "$GITHUB_STEP_SUMMARY"
           head -c 300 resposta.json | tee -a "$GITHUB_STEP_SUMMARY"
+          echo; echo "IA pelo site (foto vazia, só para ver se a IA tem permissão):"
+          curl -sL -H "Content-Type: text/plain;charset=utf-8" --data '{"api":"apiLerComIA","args":["",{}]}' "$URL" | head -c 400 | tee -a "$GITHUB_STEP_SUMMARY"
+          # Fotos reais pela IA do app publicado: só fora da main (na main o app ainda é o antigo nesta hora).
+          [ "$GITHUB_REF" = "refs/heads/main" ] && exit 0
+          for f in tests/etiquetas/*.jpg; do
+            echo; echo "Etiqueta $f:"
+            node -e 'const fs=require("fs");process.stdout.write(JSON.stringify({api:"apiLerComIA",args:["data:image/jpeg;base64,"+fs.readFileSync(process.argv[1]).toString("base64"),{}]}))' "$f" > corpo.json
+            curl -sL -H "Content-Type: text/plain;charset=utf-8" --data @corpo.json "$URL" | head -c 600 | tee -a "$GITHUB_STEP_SUMMARY"
+          done
 
   enviar:
     needs: testes
