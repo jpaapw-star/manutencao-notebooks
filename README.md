@@ -18,6 +18,10 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 | `src/Index.html` | Tela do app |
 | `scripts/enviar-notas.js` | Manda `notas/` para o app (usado pelo GitHub) |
 
+## 1.13.0: resumo do que foi feito na planilha de produção
+
+Ao marcar REPARADO, o técnico escreve do jeito dele. Na coluna DESCRIÇÃO da planilha MANUTENÇÕES INFORMATICA GERAL vai só o resumo no padrão da planilha (ex.: "REPARO NA INTERFACE DE ÁUDIO", "TROCA DE SSD E FORMATAÇÃO DO SISTEMA", "REPARO NO CIRCUITO DE CARGA"). Regras primeiro; a IA só entra quando as regras não conseguem. O texto inteiro continua nas observações. O app mostra, ao salvar, o que vai para a planilha.
+
 ## Observações e previsão das peças (1.3.0)
 
 - Cada observação (app, outro projeto ou controle de qualidade) vira uma linha na aba **OBSERVAÇÕES** com data, técnico e texto completo. Nada é apagado.

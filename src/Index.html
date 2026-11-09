@@ -144,7 +144,7 @@ function aplicarModo(){
   var rep = S.sit === 'REPARADO';
   $('form').classList.toggle('reparo', rep);
   $('lNota').textContent = rep ? 'O QUE FOI FEITO (VAI PARA A PLANILHA DE PRODUÇÃO)' : S.atual ? 'NOVA OBSERVAÇÃO' : 'DEFEITO';
-  $('f_nota').placeholder = rep ? 'Ex.: TROCA DE TELA E REPARO NA INTERFACE DE ÁUDIO' : S.atual ? 'O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok' : 'O defeito que apareceu. Toque abaixo ou dite pelo microfone';
+  $('f_nota').placeholder = rep ? 'Escreva do seu jeito. Na planilha vai só o resumo, ex.: TROCA DE TELA E REPARO NA INTERFACE DE ÁUDIO' : S.atual ? 'O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok' : 'O defeito que apareceu. Toque abaixo ou dite pelo microfone';
   if (rep && !$('f_nota').value.trim() && S.atual && S.atual._sugestao) $('f_nota').value = S.atual._sugestao;
   if (rep && !valorCampo('TÉCNICO') && S.tecnico) porCampo('TÉCNICO', S.tecnico);
 }
@@ -294,7 +294,7 @@ function salvar(){
       aviso(r.erro); return;
     }
     $('pItem').classList.remove('on');
-    aviso(r.nada ? 'Nada mudou.' : 'Salvo.');
+    aviso(r.producao ? 'Salvo. Na planilha de produção vai: ' + r.producao : r.nada ? 'Nada mudou.' : 'Salvo.');
     $('busca').value = '';
     carregar();
   }, function(){ $('salvar').disabled = false; });
