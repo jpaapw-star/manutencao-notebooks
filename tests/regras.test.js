@@ -343,3 +343,17 @@ test('previsão: "não liga mesmo ao carregador" não acusa o carregador', () =>
   assert.strictEqual(preverPecas('não ligava mesmo conectado ao carregador', []).texto, 'PLACA-MÃE (SUSPEITA)');
   assert.strictEqual(preverPecas('CARREGADOR NÃO FUNCIONA', []).texto, 'CARREGADOR (CONFIRMADA)');
 });
+
+test('reparado antigo: só sai da planilha de defeitos se o serial estiver numa aba de mês', () => {
+  const { seriaisDosMeses_ } = m.exports;
+  const aba = (nome, linhas) => ({
+    getName: () => nome, getLastRow: () => linhas.length, getLastColumn: () => linhas[0].length,
+    getRange: (r, c, n, k) => ({ getValues: () => linhas.slice(r - 1, r - 1 + n).map(l => l.slice(c - 1, c - 1 + (k || 1))) })
+  });
+  const ss = { getSheets: () => [
+    aba('OUTUBRO 2026', [['TÉCNICO', 'SERIAL'], ['ANA', 'pe0fxeyd']]),
+    aba('RESUMO', [['SERIAL'], ['NAOCONTA1']])
+  ] };
+  const ja = seriaisDosMeses_(ss);
+  assert.deepStrictEqual(Object.keys(ja), ['PE0FXEYD']);
+});
