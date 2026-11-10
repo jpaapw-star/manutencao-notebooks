@@ -337,3 +337,9 @@ test('descrição pelo modelo: resposta limpa, NADA vira vazio', () => {
   assert.strictEqual(descricaoDaResposta('**Alienware 16 Aurora, Intel Core 7 240H, 16GB, SSD 1TB, RTX 5060, 16"**.'), 'ALIENWARE 16 AURORA, INTEL CORE 7 240H, 16GB, SSD 1TB, RTX 5060, 16"');
   assert.strictEqual(descricaoDaResposta('NADA'), '');
 });
+
+test('nomes de quem adiciona: lista primeiro, sem repetir', () => {
+  const { juntarNomes } = m.exports;
+  assert.deepStrictEqual(juntarNomes(['JOÃO PEDRO'], ['ana leal', 'JOAO PEDRO', '', 'GABRIEL  ANTÔNIO', 'Ana Leal', '—']),
+    ['JOÃO PEDRO', 'ANA LEAL', 'GABRIEL ANTÔNIO']);
+});
