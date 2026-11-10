@@ -1227,7 +1227,7 @@ function recalcular_(ss) {
   var est = lerEstoque_(ss), compat = lerCompat_(ss);
   escreverCompativeis_(ss, d.itens, est, compat);
   escreverPecas_(ss, d, est, compat);
-  try { registrarArrumados_(d.itens, mapa); } catch (x) { console.log('manutenções do mês: ' + x); }
+  try { registrarArrumados_(d.itens, mapa, ss); } catch (x) { console.log('manutenções do mês: ' + x); }
 }
 
 // ===== Planilha de manutenções do mês (MANUTENÇÕES INFORMATICA GERAL) =====
@@ -1274,6 +1274,99 @@ function descricaoReparo(pecas, textos, defeito) {
   return String(ult ? resumoObs(ult, 90) : (defeito || 'REPARO')).toUpperCase();
 }
 
+// ===== Resumo do que foi feito, no jeito da coluna DESCRIÇÃO da planilha de produção =====
+// O técnico escreve livre ("notebook apresentava áudio fora do padrão, atualizei os drivers..."),
+// e na planilha vai só o resumo: "REPARO NA INTERFACE DE ÁUDIO", "TROCA DE TELA E ARO",
+// "FORMATAÇÃO DO SISTEMA E REPARO NA INTERFACE DE REDE". O texto inteiro fica nas observações.
+
+// Área → [nome na "INTERFACE DE …", palavras da área, [palavra da peça, nome da peça na TROCA]...]
+var AREAS_REPARO = [
+  ['ÁUDIO', /\b(AUDIO|SOM|ALTO[ -]?FALANTES?|AUTO[ -]?FALANTES?|FALANTES?|MICROFONES?|P2|FONE)\b/,
+    [[/\b(ALTO[ -]?FALANTES?|AUTO[ -]?FALANTES?|FALANTES?)\b/, 'AUTOFALANTES'], [/\bMICROFONES?\b/, 'MICROFONE']]],
+  ['VÍDEO', /\b(VIDEO|IMAGEM|TELA|DISPLAY|LCD|GPU|PLACA DE VIDEO|HDMI)\b/,
+    [[/\b(TELA|DISPLAY|LCD)\b/, 'TELA'], [/\bFLAT\b/, 'FLAT DA TELA']]],
+  ['REDE', /\b(REDE|WI-?FI|WIRELESS|INTERNET|ETHERNET|BLUETOOTH)\b/,
+    [[/\b(PLACA DE REDE|PLACA WI-?FI|PLACA DE WI-?FI|PLACA WIRELESS|MODULO WI-?FI)\b/, 'PLACA DE REDE']]],
+  ['TECLADO', /\b(TECLADO|TECLAS?|BORBOLETAS?|KEYCAPS?)\b/,
+    [[/\bBORBOLETAS?\b/, 'BORBOLETA DA TECLA'], [/\bKEYCAPS?\b/, 'KEYCAP'], [/\bTECLADO\b/, 'TECLADO']]],
+  ['TOUCHPAD', /\b(TOUCH ?PAD|MOUSE PAD)\b/, [[/\b(TOUCH ?PAD|MOUSE PAD)\b/, 'TOUCHPAD']]],
+  ['CARGA', /\b(CARGA|CARREGA\w*|BATERIA|CONECTOR DE ENERGIA|FONTE)\b/,
+    [[/\bBATERIA\b/, 'BATERIA'], [/\b(CONECTOR DE CARGA|CONECTOR DE ENERGIA|DC ?JACK|JACK)\b/, 'CONECTOR DE CARGA']]],
+  ['INICIALIZAÇÃO', /\b(BOOT|INICIALIZ\w*|BIOS|NAO LIGA\w*|NAO INICIA\w*)\b/, [[/\b(CHIP DA BIOS|CI DA BIOS)\b/, 'CHIP DA BIOS'], [/\b(PILHA|BATERIA CMOS)\b/, 'PILHA DA BIOS']]],
+  ['CÂMERA', /\b(WEBCAM|CAMERA)\b/, [[/\b(WEBCAM|CAMERA|MODULO DE CAMERA)\b/, 'WEBCAM']]],
+  ['ARMAZENAMENTO', /\b(SSD|HDD?|NVME|ARMAZENAMENTO)\b/, [[/\b(SSD|HDD?|NVME)\b/, 'SSD']]],
+  ['MEMÓRIA', /\b(MEMORIA|RAM|PENTE)\b/, [[/\b(MEMORIA|RAM|PENTE)\b/, 'MEMÓRIA RAM']]],
+  ['USB', /\bUSB\b/, []],
+  ['REFRIGERAÇÃO', /\b(COOLER|VENTOINHA|FAN|PASTA TERMICA|DISSIPADOR)\b/, [[/\bPASTA TERMICA\b/, 'PASTA TÉRMICA'], [/\b(COOLER|VENTOINHA|FAN)\b/, 'COOLER']]],
+  ['', /\b(CARCACA|ARO|DOBRADICAS?|TAMPA)\b/, [[/\bARO\b/, 'ARO'], [/\bDOBRADICAS?\b/, 'DOBRADIÇAS'], [/\b(CARCACA|TAMPA)\b/, 'CARCAÇA']]]
+];
+var R_TROCA = /\b(TROC\w*|TROQU\w*|SUBSTITU\w*|COLOQUEI|COLOCAD\w* (UM|UMA|OUTR)\w*|NOV[OA]S?)\b/;
+var R_FORMATA = /\b(FORMATA\w*|FORMATEI|REINSTAL\w*|INSTAL\w* (DO |O |UM )?(NOVO )?(WINDOWS|SISTEMA))\b/;
+var R_SO_TESTE = /\b(TESTAD\w*|TESTEI|TESTES?|OK|FUNCIONANDO|NORMAL\w*|PERFEIT\w*)\b/;
+var R_ESTILO = /^(TROCA|REPARO|FORMATA|AJUSTE|RETIRADA|RECONEX|LIMPEZA|INSTALA|ATUALIZA|REMAPEA|RECRIA|RESOLDA|SUBSTITUI)/;
+
+/**
+ * Resumo do que foi feito para a planilha de produção. Texto que já está no jeito da planilha fica como está.
+ * Retorna '' quando as regras não conseguem resumir (aí o servidor pergunta à IA). Pura.
+ */
+function resumoProducao(texto) {
+  var t = String(texto == null ? '' : texto).replace(/\s+/g, ' ').trim().toUpperCase().replace(/[.;]+$/, '');
+  if (!t) return '';
+  var u = semAcento_(t);
+  if (R_ESTILO.test(u) && t.length <= 80 && !/[.;!?]\s/.test(t) && !/\b(EU|FOI|FORAM|ESTAVA|APRESENTAVA|TROQUEI|FIZ)\b/.test(u)) return t;
+  var trocas = [], areas = [], formatou = R_FORMATA.test(u), anterior = [];
+  u.split(/[.;!?\n]+|,| E | MAS | POREM | DEPOIS /).forEach(function (fr) {
+    fr = ' ' + fr.replace(/[^A-Z0-9-]+/g, ' ').trim() + ' ';
+    if (fr.trim().length < 2) return;
+    var troca = R_TROCA.test(fr);
+    var pecas = [];
+    AREAS_REPARO.forEach(function (a) { a[2].forEach(function (pc) { if (pc[0].test(fr) && pecas.indexOf(pc[1]) < 0) pecas.push(pc[1]); }); });
+    // "SSD corrompido, troquei por um novo": a peça veio no pedaço de antes.
+    var trocadas = troca ? (pecas.length ? pecas : anterior) : [];
+    anterior = pecas;
+    trocadas.forEach(function (pc) { if (trocas.indexOf(pc) < 0) trocas.push(pc); });
+    if (trocadas.length) return;
+    if (R_SO_TESTE.test(fr) && !/\b(FORA DO PADRAO|DEFEITO|NAO FUNCION\w*|FALH\w*|RUIM|BAIXO|CHIAD\w*|SEM)\b/.test(fr)) return;
+    AREAS_REPARO.forEach(function (a) {
+      if (a[0] && a[1].test(fr) && areas.indexOf(a[0]) < 0) areas.push(a[0]);
+    });
+  });
+  // Peça trocada já explica a área dela (troca de tela não vira também "reparo na interface de vídeo").
+  areas = areas.filter(function (ar) {
+    var a = AREAS_REPARO.filter(function (x) { return x[0] === ar; })[0];
+    return !a[2].some(function (pc) { return trocas.indexOf(pc[1]) >= 0; });
+  });
+  if (formatou) areas = areas.filter(function (ar) { return ar !== 'INICIALIZAÇÃO'; });
+  var partes = [];
+  if (trocas.length) partes.push('TROCA DE ' + listaPt_(trocas));
+  if (formatou) partes.push('FORMATAÇÃO DO SISTEMA');
+  var carga = areas.indexOf('CARGA') >= 0;   // na planilha é "REPARO NO CIRCUITO DE CARGA"
+  areas = areas.filter(function (ar) { return ar !== 'CARGA'; });
+  if (areas.length) partes.push('REPARO NA INTERFACE DE ' + listaPt_(areas));
+  if (carga) partes.push('REPARO NO CIRCUITO DE CARGA');
+  return partes.length > 2 ? partes.slice(0, -1).join(', ') + ' E ' + partes[partes.length - 1] : partes.join(' E ');
+}
+
+// Exemplos reais da coluna DESCRIÇÃO (planilha MANUTENÇÕES INFORMATICA GERAL), para a IA copiar o jeito.
+var EXEMPLOS_PRODUCAO = ['REPARO NA INTERFACE DE ÁUDIO', 'TROCA DE TELA', 'TROCA DE SSD E PLACA DE REDE', 'REPARO NA INTERFACE DE VÍDEO, REDE E ÁUDIO',
+  'FORMATAÇÃO DO SISTEMA E REPARO NA INTERFACE DE REDE', 'REPARO NA INTERFACE DE INICIALIZAÇÃO E FORMATAÇÃO DO SISTEMA', 'TROCA DE BATERIA',
+  'REPARO NO CIRCUITO DE CARGA', 'TROCA DA BORBOLETA DA TECLA', 'TROCA DE KEYCAP', 'AJUSTE DE CARCAÇA FORA DO ARO', 'TROCA DE MEMÓRIA RAM',
+  'REPARO NA INTERFACE DE TOUCHPAD', 'TROCA DE CI PU501 CI DE CARGA', 'RETIRADA DE BLOQUEIO DO TPM VIA FIRMWARE', 'TROCA DE TELA E ARO',
+  'REPARO NA INTERFACE DE WIFI', 'TROCA DE WEBCAM', 'TROCA DE AUTOFALANTES', 'TROCA DE SSD E REPARO NA INTERFACE DE ÁUDIO'];
+
+/** Resumo para a planilha de produção: regras primeiro; se não der, a IA (uma vez); se nada der, o começo do texto. */
+function resumirProducao_(texto) {
+  var r = resumoProducao(texto);
+  if (r) return r;
+  var k = iaChave_();
+  var t = k ? pesquisarIA_(k, 'Resuma em UMA linha curta, em MAIÚSCULAS, o que o técnico fez no notebook, no mesmo jeito destes exemplos ' +
+    '(só o serviço feito, sem sintomas, sem testes, sem ponto final):\n' + EXEMPLOS_PRODUCAO.join('\n') +
+    '\n\nTexto do técnico:\n' + texto + '\n\nResponda só a linha.', []) : null;
+  t = String(t || '').split('\n')[0].replace(/^["'\s-]+|["'.\s]+$/g, '').toUpperCase();
+  if (t && t.length <= 90) return t;
+  return resumoObs(String(texto).toUpperCase(), 80).replace(/…$/, '');
+}
+
 /** Linha da planilha de manutenções na ordem do cabeçalho daquela aba (nomes de coluna variam de mês para mês). Pura. */
 function linhaManutencao(cab, it, descricao, data) {
   return cab.map(function (h) {
@@ -1293,24 +1386,24 @@ function linhaManutencao(cab, it, descricao, data) {
  * Se voltar para uma situação em aberto, pode entrar de novo quando for arrumado outra vez.
  * Não mexe em nada que já está lá: só acrescenta linhas, e cria a aba do mês (cópia do cabeçalho do mês anterior) quando falta.
  */
-function registrarArrumados_(itens, mapa) {
+function registrarArrumados_(itens, mapa, ssManut) {
   var props = PropertiesService.getScriptProperties();
   var marcas = props.getProperties();
   var hoje = new Date();
   var mesAtual = Utilities.formatDate(hoje, 'America/Sao_Paulo', 'MM/yyyy');
-  var novos = [];
+  var novos = [], sair = [];
   itens.forEach(function (it) {
     var sn = normalizarSerial(it.SERIAL);
     if (!sn) return;
     var chave = 'arr:' + sn;
     var feito = ARRUMADO.indexOf(semAcento_(it['SITUAÇÃO']).trim()) >= 0;
     if (!feito) { if (marcas[chave]) props.deleteProperty(chave); return; }
-    if (marcas[chave]) return;
+    if (marcas[chave]) { sair.push(it); return; }   // já está na planilha de produção: sai da planilha de defeitos
     // Só o que foi arrumado neste mês (o que é mais antigo já devia estar na planilha).
-    if (String(it['ÚLTIMA ATUALIZAÇÃO'] || '').slice(3) !== mesAtual) { props.setProperty(chave, 'antigo'); return; }
+    if (String(it['ÚLTIMA ATUALIZAÇÃO'] || '').slice(3) !== mesAtual) { props.setProperty(chave, 'antigo'); sair.push(it); return; }
     novos.push(it);
   });
-  if (!novos.length) return 0;
+  if (!novos.length) { if (ssManut) tirarReparados_(ssManut, sair); return 0; }
   var ss = SpreadsheetApp.openById(PLANILHAS.ARRUMADOS);
   var nome = abaDoMes(hoje);
   var aba = ss.getSheetByName(nome) || criarAbaDoMes_(ss, nome);
@@ -1331,8 +1424,31 @@ function registrarArrumados_(itens, mapa) {
     }
     props.setProperty('arr:' + sn, Utilities.formatDate(hoje, 'America/Sao_Paulo', 'dd/MM/yyyy'));
     props.deleteProperty('prod:' + sn);
+    sair.push(it);
   });
+  if (ssManut) tirarReparados_(ssManut, sair);
   return feitos;
+}
+
+/**
+ * Regra do João (09/11/2026): aparelho REPARADO vai para a planilha de produção e NÃO fica na planilha de defeitos.
+ * Só sai depois de gravado lá. A linha inteira fica no HISTÓRICO (para recuperar) e as observações continuam na aba OBSERVAÇÕES.
+ */
+function tirarReparados_(ss, lista) {
+  var porAba = {};
+  lista.forEach(function (it) { if (it._aba && it._linha) (porAba[it._aba] = porAba[it._aba] || []).push(it); });
+  Object.keys(porAba).forEach(function (nome) {
+    var aba = ss.getSheetByName(nome);
+    if (!aba) return;
+    porAba[nome].sort(function (a, b) { return b._linha - a._linha; }).forEach(function (it) {
+      var sn = normalizarSerial(aba.getRange(it._linha, cabecalho_(aba).indexOf('SERIAL') + 1).getValue());
+      if (sn !== normalizarSerial(it.SERIAL)) return;   // a planilha mudou no meio: não apaga a linha errada
+      var copia = {};
+      Object.keys(it).forEach(function (k) { if (k.charAt(0) !== '_' && it[k] !== '' && it[k] != null) copia[k] = it[k]; });
+      historico_(ss, 'AUTOMÁTICO', it.SERIAL, 'SAIU (REPARADO, FOI PARA A PLANILHA DE PRODUÇÃO)', JSON.stringify(copia), nome);
+      aba.deleteRow(it._linha);
+    });
+  });
 }
 
 /** Cria a aba do mês copiando a aba do mês mais recente e limpando só os dados (cabeçalho, tabela e formatação ficam). */
@@ -1438,7 +1554,8 @@ function apiBuscar(serial) {
 
 var IA_MODELOS = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-flash-lite-latest', 'gemini-flash-latest'];
 var IA_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
-var IA_ETIQUETA = ['gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-3.1-flash-lite-preview', 'gemini-flash-lite-latest'];
+// Medido em 09/11/2026 com fotos reais (CI 'Medir a IA'): flash-lite-latest lê certo em ~1 s; 3-flash com thinking minimal travava 60-90 s.
+var IA_ETIQUETA = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-flash-latest'];
 
 function iaChave_() { return (typeof SEGREDOS !== 'undefined' && SEGREDOS.iaChave) || ''; }
 
@@ -1449,6 +1566,19 @@ function apiIaLigada() { return !!iaChave_(); }
  * Lê a foto da etiqueta com a IA e devolve { SERIAL, EAN, MARCA, MODELO, DESCRIÇÃO } (vazio = não achou).
  * jaLido: o que o código de barras já leu (vai como dica, a IA só confirma/completa).
  */
+/** EAN que a IA leu: só 8, 12, 13 ou 14 dígitos (número de pedido, PO etc. não servem). Pura. */
+function eanDaIA(v) {
+  var e = String(v || '').replace(/\D/g, '');
+  return /^(\d{8}|\d{12,14})$/.test(e) ? e : '';
+}
+
+/** Serial que a IA leu, sem os enganos comuns: Dell/Alienware só aceita Service Tag de 7 caracteres (P/N tem 5). Pura. */
+function serialDaIA(serial, marca) {
+  var sn = String(serial || '').toUpperCase().replace(/\s+/g, '');
+  if (/DELL|ALIENWARE/.test(String(marca || '').toUpperCase()) && !/^[A-Z0-9]{7}$/.test(sn)) return '';
+  return sn;
+}
+
 function apiLerComIA(base64, jaLido) {
   var k = iaChave_();
   if (!k) return { erro: 'A IA não está ligada nesta publicação.' };
@@ -1458,20 +1588,21 @@ function apiLerComIA(base64, jaLido) {
     codigos.concat(jaLido.ean ? ['EAN ' + jaLido.ean] : []).join(', ') + '.' : '';
   var texto = 'Foto da etiqueta de um notebook, console ou acessório em manutenção. Leia:\n' +
     '- serial: o número de série impresso ao lado de S/N, SN, Serial No. ou Service Tag (Dell, 7 caracteres). ' +
-    'NÃO é o P/N, PN, Part No., SKU, SNID (Acer), UPC, EAN, MAC, IMEI nem o código do modelo. Asus costuma ter 15 caracteres (ex. W6N0B605436627B), ' +
+    'NÃO é o P/N, PN, Part No., DP/N, SKU, SNID (Acer), UPC, EAN, MAC, IMEI, Order, PO nem o código do modelo. Se a foto não mostra o serial, deixe vazio. Asus costuma ter 15 caracteres (ex. W6N0B605436627B), ' +
     'Acer 22 (ex. NXKMDAL0014159468C9501), Lenovo 8 (ex. PF4ABC12), Positivo 9 (ex. 4AK45WJ6S).\n' +
     '- ean: código de barras de 8 a 14 dígitos (EAN/UPC), se houver.\n' +
-    '- marca.\n' +
-    '- modelo: o código do modelo (Model, Modelo, MOD), ex. E1504FA, A315-510P, 15IRH10, C4128E. Não use o P/N.\n' +
+    '- marca: a fabricante (Alienware e Inspiron são DELL; Legion e IdeaPad são LENOVO; Predator e Nitro são ACER; ROG e TUF são ASUS).\n' +
+    '- tipo: NOTEBOOK, DESKTOP, MONITOR, PLAYSTATION, XBOX, NINTENDO ou CONTROLE.\n' +
+    '- modelo: o código do modelo (Model, Modelo, MOD), ex. E1504FA, A315-510P, 15IRH10, C4128E; na caixa da Dell do Brasil é o código grande tipo AC16-C7240H-D30 ou I15-I120K-A25P. Não use o P/N.\n' +
     '- descricao: curta (processador, memória, armazenamento, se aparecerem).\n' +
     'Copie letra por letra exatamente o que está impresso, sem trocar O por 0 nem I por 1 por conta própria; não invente. Deixe vazio o que não aparece.' + dica;
-  var esquema = { type: 'OBJECT', properties: { serial: { type: 'STRING' }, ean: { type: 'STRING' }, marca: { type: 'STRING' }, modelo: { type: 'STRING' }, descricao: { type: 'STRING' } } };
+  var esquema = { type: 'OBJECT', properties: { serial: { type: 'STRING' }, ean: { type: 'STRING' }, marca: { type: 'STRING' }, tipo: { type: 'STRING' }, modelo: { type: 'STRING' }, descricao: { type: 'STRING' } } };
   var partes = [{ text: texto }, { inline_data: { mime_type: 'image/jpeg', data: String(base64 || '').replace(/^data:[^,]*,/, '') } }];
   var erro = '';
   // Etiqueta pede leitura caprichada: começa pelo modelo mais forte; os "lite" ficam de reserva.
   var ordem = IA_ETIQUETA;
   for (var i = 0; i < ordem.length; i++) {
-    var modos = ['minimal', ''];
+    var modos = [''];   // sem thinkingConfig: com ele o 3-flash travava e o flash-latest dá 400
     for (var j = 0; j < modos.length; j++) {
       var cfg = { temperature: 0, responseMimeType: 'application/json', responseSchema: esquema };
       if (modos[j]) cfg.thinkingConfig = { thinkingLevel: modos[j] };
@@ -1488,11 +1619,13 @@ function apiLerComIA(base64, jaLido) {
       try {
         var t = JSON.parse(r.getContentText()).candidates[0].content.parts[0].text;
         var o = JSON.parse(t);
+        if (!o.serial && !o.modelo && !o.ean && i < ordem.length - 1) { erro = ordem[i] + ' não leu nada'; break; }
         return {
-          SERIAL: String(o.serial || '').toUpperCase().replace(/\s+/g, ''),
-          EAN: String(o.ean || '').replace(/\D/g, ''),
+          SERIAL: serialDaIA(o.serial, o.marca),
+          EAN: eanDaIA(o.ean),
           MARCA: String(o.marca || '').toUpperCase(),
           MODELO: String(o.modelo || '').toUpperCase(),
+          TIPO: String(o.tipo || '').toUpperCase(),
           'DESCRIÇÃO': String(o.descricao || '').toUpperCase(),
           modelo_ia: ordem[i]
         };
@@ -1500,6 +1633,52 @@ function apiLerComIA(base64, jaLido) {
     }
   }
   return { erro: 'A IA não respondeu agora (' + erro + '). Tente de novo em alguns segundos.' };
+}
+
+/**
+ * Descrição do aparelho pelo modelo (a etiqueta quase nunca traz a configuração): nome comercial + processador, memória,
+ * armazenamento, placa de vídeo e tela, pesquisado com a busca do Google. Uma pesquisa por modelo (guardada).
+ */
+function apiDescricaoDoModelo(marca, modelo) {
+  var mod = String(modelo || '').toUpperCase().trim();
+  if (mod.length < 4) return '';
+  var props = PropertiesService.getScriptProperties();
+  var chave = 'desc:' + mod.slice(0, 80);
+  var ja = props.getProperty(chave);
+  if (ja !== null) return ja;
+  var k = iaChave_();
+  if (!k) return '';
+  var t = pesquisarIA_(k, perguntaDescricao(marca, mod));
+  if (t !== null) { var d = descricaoDaResposta(t); props.setProperty(chave, d); return d; }
+  // Busca do Google sem cota agora: só o nome comercial e a tela (a IA não inventa a configuração).
+  // Fica guardado só por 6 h, para depois a busca completar.
+  var cache = CacheService.getScriptCache(), ck = 'descSemBusca:' + mod.slice(0, 80);
+  var c = cache.get(ck);
+  if (c !== null) return c;
+  t = pesquisarIA_(k, perguntaDescricao(marca, mod, true), []);
+  if (t === null) return '';                     // IA fora do ar: tenta de novo outra vez
+  var curta = descricaoDaResposta(t);
+  cache.put(ck, curta, 21600);
+  return curta;
+}
+
+/** Pergunta da descrição pelo modelo. Pura. */
+function perguntaDescricao(marca, modelo, semBusca) {
+  var nome = [marca, modelo].filter(String).join(' ');
+  if (semBusca) return 'Notebook/aparelho ' + nome + ' (código de modelo da Dell/Lenovo/Acer/Asus/Positivo do Brasil). ' +
+    'Sem inventar configuração (o mesmo modelo vem com processador e memória diferentes): responda UMA linha curta em MAIÚSCULAS só com NOME COMERCIAL, TELA. ' +
+    'Ex.: ACER ASPIRE 5 A515-45, 15,6". Sem frase, sem ponto final. Se não tiver certeza do nome, responda só NADA.';
+  return 'Pesquise o notebook/aparelho ' + [marca, modelo].filter(String).join(' ') + ' (pode ser código de modelo da Dell/Lenovo/Acer/Asus/Positivo do Brasil). ' +
+    'Responda UMA linha curta em MAIÚSCULAS no formato: NOME COMERCIAL, PROCESSADOR, MEMÓRIA, ARMAZENAMENTO, PLACA DE VÍDEO (só se dedicada), TELA. ' +
+    'Ex.: ASPIRE GO 15 AG15-51P-39MU, INTEL CORE I3 N305, 8GB, SSD 512GB, 15,6". Sem frase, sem ponto final. Se não achar esse modelo exato, responda só NADA.';
+}
+
+/** Limpa a resposta da IA para a célula DESCRIÇÃO. Pura. */
+function descricaoDaResposta(t) {
+  var l = String(t || '').split('\n').map(function (x) { return x.trim(); }).filter(String)[0] || '';
+  l = l.replace(/\*\*/g, '').replace(/^[*"'\s-]+|[*'.\s]+$/g, '').replace(/([^\d])"+$/, '$1').trim().toUpperCase();
+  if (!l || /^NADA\b/.test(l) || l.length > 140) return '';
+  return l;
 }
 
 /** O que a planilha já sabe de um EAN (último aparelho com ele): tipo, marca, modelo, descrição. */
@@ -1527,7 +1706,8 @@ function apiSalvar(item, tecnico) {
   try {
     // O que foi feito, escrito ao marcar REPARADO: vira a DESCRIÇÃO na planilha de produção.
     var sn0 = normalizarSerial(item.SERIAL || item._serial);
-    if (item._producao && sn0) PropertiesService.getScriptProperties().setProperty('prod:' + sn0, String(item._producao).trim().toUpperCase());
+    var producao = item._producao ? resumirProducao_(item._producao) : '';
+    if (producao && sn0) PropertiesService.getScriptProperties().setProperty('prod:' + sn0, producao);
     var ss = planilha_();
     var aba = abaDe_(ss, item._linha ? item._aba : ABA);
     var cab = cabecalho_(aba);
@@ -1563,7 +1743,7 @@ function apiSalvar(item, tecnico) {
       historico_(ss, tecnico, serial, 'CADASTRO', '', item['SITUAÇÃO']);
       adicionarObs_(ss, { SERIAL: serial, MODELO: item.MODELO, _linha: r }, notasDoPedido_(item, tecnico, agora));
       recalcular_(ss);
-      return { ok: true, linha: r };
+      return { ok: true, linha: r, producao: producao };
     }
     var r2 = Number(item._linha);
     var atual = aba.getRange(r2, 1, 1, cab.length).getValues()[0];
@@ -1588,12 +1768,12 @@ function apiSalvar(item, tecnico) {
     var it2 = { SERIAL: atual[cSerial], MODELO: cM >= 0 ? atual[cM] : '', _linha: r2 };
     if (mudouCol.SERIAL) renomearObs_(ss, normalizarSerial(item._serial) || ('LINHA ' + r2), chaveObs_(it2));
     if (adicionarObs_(ss, it2, notasDoPedido_(item, tecnico, agora))) mudou = true;
-    if (!mudou) return { ok: true, linha: r2, nada: true };
+    if (!mudou) return { ok: true, linha: r2, nada: !producao, producao: producao };
     var cu = cab.indexOf('ÚLTIMA ATUALIZAÇÃO');
     if (cu >= 0) atual[cu] = agora;
     aba.getRange(r2, 1, 1, cab.length).setValues([atual]);
     recalcular_(ss);
-    return { ok: true, linha: r2 };
+    return { ok: true, linha: r2, producao: producao };
   } finally {
     lock.releaseLock();
   }
@@ -1652,7 +1832,7 @@ function doPost(e) {
   // Chamadas do site do app (endereço próprio no GitHub Pages): mesmas funções da tela, sem login.
   if (corpo.api) {
     var API = { apiInicio: apiInicio, apiBuscar: apiBuscar, apiPorEan: apiPorEan, apiIaLigada: apiIaLigada,
-      apiLerComIA: apiLerComIA, apiSalvar: apiSalvar, apiSincronizar: apiSincronizar };
+      apiLerComIA: apiLerComIA, apiDescricaoDoModelo: apiDescricaoDoModelo, apiSalvar: apiSalvar, apiSincronizar: apiSincronizar };
     if (!API[corpo.api]) return json_({ ok: false, erro: 'função desconhecida' });
     try {
       prepararPlanilha_();
@@ -1732,5 +1912,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { perguntaDescricao: perguntaDescricao, descricaoDaResposta: descricaoDaResposta, eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }

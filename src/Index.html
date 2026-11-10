@@ -127,7 +127,7 @@ function chamar(fn, args, ok, erro){
 
 function carregar(depois){
   chamar('apiInicio', [], function(d){
-    S.listas = d.listas || {}; S.itens = d.itens || []; S.ia = !!d.ia; S.montagens = d.montagens || [];
+    S.listas = d.listas || {}; S.itens = d.itens || []; S.carregado = true; S.ia = !!d.ia; S.montagens = d.montagens || [];
     var bm = $('montar'); bm.style.display = S.montagens.length ? '' : 'none'; bm.textContent = '⇄ ' + S.montagens.length + ' para montar';
     $('sub').innerHTML = (S.tecnico ? esc(S.tecnico) + ' · <a href="#" id="trocar">trocar</a> · ' : '') + '<a href="' + esc(d.planilha) + '" target="_blank">abrir planilha</a>';
     var t = $('trocar'); if (t) t.onclick = function(e){ e.preventDefault(); pedirNome(); };
@@ -137,14 +137,16 @@ function carregar(depois){
 }
 
 // FINALIZADO não é escolhido no app: só vem do controle de qualidade. Arrumado = REPARADO.
-function situacoes(){ return (S.listas['SITUAÇÃO'] || []).concat(ENCERRADAS.filter(function(s){ return (S.listas['SITUAÇÃO']||[]).indexOf(s) < 0; })).filter(function(s){ return s !== 'FINALIZADO'; }); }
+// Se a lista ainda não chegou do servidor (site abre rápido e a planilha demora), usa a lista padrão: antes sobrava só "Sucata".
+var SIT_PADRAO = ['EM ANÁLISE', 'EM REPARO', 'AGUARDANDO PEÇA', 'PEÇA PEDIDA', 'AGUARDANDO NF', 'ENVIADO PARA GARANTIA', 'VOLTOU DA GARANTIA', 'REPARADO', 'SUCATA'];
+function situacoes(){ var l = (S.listas['SITUAÇÃO'] || []).length ? S.listas['SITUAÇÃO'] : SIT_PADRAO; return l.concat(ENCERRADAS.filter(function(s){ return l.indexOf(s) < 0; })).filter(function(s){ return s !== 'FINALIZADO'; }); }
 // Com REPARADO, a tela mostra só o que vai para a planilha de produção (MANUTENÇÕES) e o que foi feito.
 var CAMPOS_REPARO = ['TÉCNICO', 'MARCA', 'MODELO', 'SERIAL'];
 function aplicarModo(){
   var rep = S.sit === 'REPARADO';
   $('form').classList.toggle('reparo', rep);
   $('lNota').textContent = rep ? 'O QUE FOI FEITO (VAI PARA A PLANILHA DE PRODUÇÃO)' : S.atual ? 'NOVA OBSERVAÇÃO' : 'DEFEITO';
-  $('f_nota').placeholder = rep ? 'Ex.: TROCA DE TELA E REPARO NA INTERFACE DE ÁUDIO' : S.atual ? 'O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok' : 'O defeito que apareceu. Toque abaixo ou dite pelo microfone';
+  $('f_nota').placeholder = rep ? 'Escreva do seu jeito. Na planilha vai só o resumo, ex.: TROCA DE TELA E REPARO NA INTERFACE DE ÁUDIO' : S.atual ? 'O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok' : 'O defeito que apareceu. Toque abaixo ou dite pelo microfone';
   if (rep && !$('f_nota').value.trim() && S.atual && S.atual._sugestao) $('f_nota').value = S.atual._sugestao;
   if (rep && !valorCampo('TÉCNICO') && S.tecnico) porCampo('TÉCNICO', S.tecnico);
 }
@@ -248,7 +250,12 @@ function abrir(item){
   h += '<div class="rodape" style="text-align:left">Fica com seu nome e a data de hoje. As observações antigas nunca são apagadas.</div>';
   if (item) h += '<div class="rodape">Entrada ' + esc(it['DATA ENTRADA']||'—') + ' · atualizado ' + esc(it['ÚLTIMA ATUALIZAÇÃO']||'—') + '</div>';
   $('form').innerHTML = h;
+  // Notebook com duas etiquetas: depois da 1ª foto o botão vira "Foto de outra etiqueta" e a 2ª só completa o que faltou.
+  S.fotosLidas = 0;
   $('fotoEtiqueta').onclick = function(){ escolherFoto(preencherDaEtiqueta); };
+  // Modelo digitado à mão também puxa a descrição.
+  completarDescricao.feito = '';
+  if ($('f_MODELO')) $('f_MODELO').addEventListener('change', completarDescricao);
   // Defeitos comuns: um toque acrescenta no campo (dá para ditar pelo microfone do teclado também).
   // Sem campo DEFEITO: o defeito é escrito como observação (a primeira, num aparelho novo). Os defeitos comuns ficam embaixo dela.
   var fd = $('f_nota');
@@ -294,7 +301,7 @@ function salvar(){
       aviso(r.erro); return;
     }
     $('pItem').classList.remove('on');
-    aviso(r.nada ? 'Nada mudou.' : 'Salvo.');
+    aviso(r.producao ? 'Salvo. Na planilha de produção vai: ' + r.producao : r.nada ? 'Nada mudou.' : 'Salvo.');
     $('busca').value = '';
     carregar();
   }, function(){ $('salvar').disabled = false; });
@@ -408,8 +415,11 @@ function porCampo(nome, v, sobrescrever){ var el = $('f_' + nome.replace(/\W/g, 
 /** Preenche o formulário com o que a foto leu e com o que a planilha já sabe desse EAN. */
 function preencherDaEtiqueta(r){
   if (!r.ean && !r.serial && !(S.ia && r.canvas)) { aviso('Nenhum código encontrado. Tente mais perto e com luz.'); return; }
-  if (r.serial) porCampo('SERIAL', r.serial, true);
-  if (r.ean) porCampo('EAN', r.ean, true);
+  var outra = (S.fotosLidas || 0) > 0;   // 2ª etiqueta: não apaga o que a 1ª já leu
+  S.fotosLidas = (S.fotosLidas || 0) + 1;
+  var bf = $('fotoEtiqueta'); if (bf) { bf.textContent = 'Foto de outra etiqueta'; bf.classList.add('sec'); }
+  if (r.serial) porCampo('SERIAL', r.serial, !outra);
+  if (r.ean) porCampo('EAN', r.ean, !outra);
   porCampo('MARCA', marcaPeloSerial(r.serial));
   if (r.serial || r.ean) aviso('Lido: ' + [r.serial, r.ean].filter(Boolean).join(' · '));
   if (r.serial) {
@@ -420,18 +430,19 @@ function preencherDaEtiqueta(r){
     if (!d) return;
     ['TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO', 'SERIAL', 'EAN'].forEach(function(k){ porCampo(k, d[k]); });
     var sel = $('f_TIPO'); if (sel && d.TIPO && !sel.value) { var o = document.createElement('option'); o.text = d.TIPO; o.selected = true; sel.add(o); }
+    completarDescricao();
   };
   // IA do SCAN só quando o código de barras não resolveu (sem serial ou modelo desconhecido).
   var ia = function(){
     // Pula a IA só quando o código de barras deu um serial com cara de serial de marca conhecida e o modelo já é conhecido.
-    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO') && marcaPeloSerial(valorCampo('SERIAL')))) return;
+    if (!S.ia || !r.canvas || (valorCampo('SERIAL') && valorCampo('MODELO') && (outra || marcaPeloSerial(valorCampo('SERIAL'))))) { completarDescricao(); return; }
     var c = r.canvas, k = Math.min(1, 2000 / Math.max(c.width, c.height)), z = document.createElement('canvas');
     z.width = Math.round(c.width * k); z.height = Math.round(c.height * k); z.getContext('2d').drawImage(c, 0, 0, z.width, z.height);
     aviso('Lendo o texto da etiqueta com IA…');
     chamar('apiLerComIA', [z.toDataURL('image/jpeg', 0.92), { serial: valorCampo('SERIAL'), ean: valorCampo('EAN'), outros: r.outros || [] }], function(d){
-      if (!d || d.erro) { aviso(d && d.erro || 'A IA não leu.'); return; }
+      if (!d || d.erro) { aviso(/UrlFetchApp|external_request/.test(d && d.erro || '') ? 'A IA está sem autorização. O dono do app precisa abrir o link do Apps Script e aceitar as permissões.' : (d && d.erro || 'A IA não leu.')); return; }
       // O leitor de código de barras pode ter pego o P/N como serial: se a IA leu outro serial impresso, vale o da IA.
-      if (d.SERIAL && valorCampo('SERIAL') && norm(d.SERIAL) !== norm(valorCampo('SERIAL')) && !S.atual && $('f_SERIAL')) $('f_SERIAL').value = '';
+      if (!outra && d.SERIAL && valorCampo('SERIAL') && norm(d.SERIAL) !== norm(valorCampo('SERIAL')) && !S.atual && $('f_SERIAL')) $('f_SERIAL').value = '';
       var tinhaSerial = valorCampo('SERIAL');
       preencher(d);
       if (!tinhaSerial && d.SERIAL) {
@@ -444,6 +455,13 @@ function preencherDaEtiqueta(r){
   };
   if (r.ean) chamar('apiPorEan', [r.ean], function(d){ preencher(d); ia(); }, ia);
   else ia();
+}
+// A etiqueta quase nunca traz a configuração: com o modelo lido, pesquisa a descrição (uma vez por modelo, fica guardada).
+function completarDescricao(){
+  var mod = valorCampo('MODELO');
+  if (!S.ia || !mod || valorCampo('DESCRIÇÃO') || completarDescricao.feito === mod) return;
+  completarDescricao.feito = mod;
+  chamar('apiDescricaoDoModelo', [valorCampo('MARCA'), mod], function(d){ if (d && !valorCampo('DESCRIÇÃO') && valorCampo('MODELO') === mod) { porCampo('DESCRIÇÃO', d); aviso('Descrição: ' + d); } }, function(){});
 }
 $('ler').style.display = '';
 $('ler').textContent = 'Foto';
@@ -458,7 +476,8 @@ $('ler').onclick = function(){
 };
 
 $('busca').oninput = desenhar;
-$('novo').onclick = function(){ abrir(null); };
+// Novo aparelho antes de a lista carregar: espera carregar para mostrar técnicos, marcas e defeitos comuns.
+$('novo').onclick = function(){ if (S.carregado) abrir(null); else { aviso('Carregando a lista…'); carregar(function(){ abrir(null); }); } };
 $('montar').onclick = mostrarMontagens;
 $('fecharMontar').onclick = function(){ $('pMontar').classList.remove('on'); };
 $('fechar').onclick = function(){ $('pItem').classList.remove('on'); };

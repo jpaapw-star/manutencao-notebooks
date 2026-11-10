@@ -18,6 +18,18 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 | `src/Index.html` | Tela do app |
 | `scripts/enviar-notas.js` | Manda `notas/` para o app (usado pelo GitHub) |
 
+## 1.16.0: descrição pelo modelo
+
+Quando a DESCRIÇÃO fica vazia (a etiqueta não traz), o app pesquisa o modelo no Google pela IA e escreve uma linha curta: nome comercial, processador, memória, armazenamento, placa de vídeo dedicada e tela. A busca é feita uma vez por modelo e fica guardada; se não achar, o campo fica vazio para digitar.
+
+## 1.15.0: leitura da etiqueta mais rápida e sem confundir P/N
+
+Medido com fotos reais (job de CI "Medir a IA nas fotos de etiqueta", fotos em tests/etiquetas): gemini-flash-lite-latest lê em ~1 s; o 3-flash com thinking travava 60-90 s e o app desistia. Ordem nova começando pelo lite, sem thinkingConfig. Dell/Alienware: serial só o Service Tag de 7 caracteres (P/N 4D25F não entra). EAN só com 8/12/13/14 dígitos. A IA também diz o TIPO.
+
+## 1.13.0: resumo do que foi feito na planilha de produção
+
+Ao marcar REPARADO, o técnico escreve do jeito dele. Na coluna DESCRIÇÃO da planilha MANUTENÇÕES INFORMATICA GERAL vai só o resumo no padrão da planilha (ex.: "REPARO NA INTERFACE DE ÁUDIO", "TROCA DE SSD E FORMATAÇÃO DO SISTEMA", "REPARO NO CIRCUITO DE CARGA"). Regras primeiro; a IA só entra quando as regras não conseguem. O texto inteiro continua nas observações. O app mostra, ao salvar, o que vai para a planilha.
+
 ## Observações e previsão das peças (1.3.0)
 
 - Cada observação (app, outro projeto ou controle de qualidade) vira uma linha na aba **OBSERVAÇÕES** com data, técnico e texto completo. Nada é apagado.
@@ -40,3 +52,6 @@ Quando um aparelho passa para REPARADO (FINALIZADO não entra e não aparece mai
 
 ### Colunas (1.11.0)
 LOCAL e COMBINA COM saíram das abas APARELHOS, GARANTIA e SUCATA. A antiga coluna DEFEITO (texto livre) também saiu: o que estava escrito virou a primeira observação de cada aparelho ("Defeito: ...", com a data de entrada). A coluna PEÇAS passou a se chamar **DEFEITO** e continua com a previsão das peças. Num aparelho novo, o defeito é escrito no campo DEFEITO do app, que vira a primeira observação. Os grupos de quem combina ficam só na aba COMPATÍVEIS e no app.
+
+### Reparados saem da planilha de defeitos (1.12.0)
+Regra do João (09/11): depois que um aparelho REPARADO é gravado na planilha de produção (MANUTENÇÕES INFORMATICA GERAL), a linha dele sai das abas APARELHOS, GARANTIA e SUCATA. A linha inteira fica guardada no HISTÓRICO e as observações continuam na aba OBSERVAÇÕES. Se a gravação na planilha de produção falhar, a linha fica até dar certo.
