@@ -1,10 +1,12 @@
 {
   "name": "manutencao-notebooks",
-  "version": "1.16.2",
+  "version": "1.17.1",
   "private": true,
   "description": "Manutenção de notebooks: app da Web (Google Apps Script) sobre a planilha de manutenção",
   "scripts": {
     "test": "node --test tests/*.test.js"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }

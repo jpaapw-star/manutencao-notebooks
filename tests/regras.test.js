@@ -357,3 +357,16 @@ test('reparado antigo: só sai da planilha de defeitos se o serial estiver numa 
   const ja = seriaisDosMeses_(ss);
   assert.deepStrictEqual(Object.keys(ja), ['PE0FXEYD']);
 });
+
+test('nomes de quem adiciona: lista primeiro, sem repetir', () => {
+  const { juntarNomes } = m.exports;
+  assert.deepStrictEqual(juntarNomes(['JOÃO PEDRO'], ['ana leal', 'JOAO PEDRO', '', 'GABRIEL  ANTÔNIO', 'Ana Leal', '—']),
+    ['JOÃO PEDRO', 'ANA LEAL', 'GABRIEL ANTÔNIO']);
+});
+
+test('nome novo na LISTAS vai depois da última célula preenchida (vazia no meio não sobrescreve)', () => {
+  const { ultimaPreenchida } = m.exports;
+  // TÉCNICO: ANA, (vazio), BRUNO, (vazio) → índice 3; o nome novo vai na linha 3 + 2 = 5
+  assert.strictEqual(ultimaPreenchida([['TÉCNICO'], ['ANA'], [''], ['BRUNO'], ['']]), 3);
+  assert.strictEqual(ultimaPreenchida([['TÉCNICO']]), 0);
+});
