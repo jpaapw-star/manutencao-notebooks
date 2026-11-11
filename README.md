@@ -18,6 +18,18 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 | `src/Index.html` | Tela do app |
 | `scripts/enviar-notas.js` | Manda `notas/` para o app (usado pelo GitHub) |
 
+## 1.18.0: revisão pelo jeito de trabalhar (novembro/2026)
+
+Feita olhando os aparelhos, o histórico e a planilha de produção dos primeiros dias de uso.
+
+- **Datas certas:** a planilha estava no fuso de Los Angeles, então a DATA ENTRADA aparecia um dia antes e as horas do HISTÓRICO 4-5 h atrás. A planilha passa para o horário de Brasília e as datas que já existem são regravadas.
+- **Aparelho sem serial** (controles, acessórios): pode salvar com o serial vazio. Ele ganha um código interno e, quando REPARADO, vai para a planilha de produção com `N\A`, como já é escrito lá.
+- **Vários iguais em seguida:** botão "Igual ao último" repete tipo, marca, modelo e situação. Quem está adicionando continua sendo perguntado.
+- **Previsão do defeito:** peça citada só como parte do teste não vira defeito ("conectado ao carregador", "retirei o SSD", "sem memória e bateria", "indicado na tela"); "troquei a tela por uma com pixel morto" marca a tela com defeito; "não estão funcionando", "defeito na placa de rede" e "botão power retirado" são entendidos; sem imagem na tela e no HDMI aponta a placa-mãe.
+- **Planilha de produção:** erros de digitação comuns são consertados (INTEFACE, SDD, AUDIO, INICIALIZAÇÂO, BOTAO). Se alguém escrever por cima do título TÉCNICO, o nome continua indo para a primeira coluna.
+- **Dados iguais sempre do mesmo jeito:** técnico, marca e tipo em maiúsculas; modelo sem espaço em volta do hífen. Descrição, marca e tipo vazios são copiados de outro aparelho com o mesmo EAN ou modelo.
+- **Observação com o nome certo:** ao abrir um aparelho, a tela mostra com que nome a observação vai ficar, com "trocar" (a tela de nomes abria escondida atrás do aparelho).
+
 ## 1.17.0: abre na hora, busca mais rápida e pergunta quem está adicionando
 
 - A lista fica guardada no aparelho: ao abrir, a tela aparece na hora com a última lista e se atualiza sozinha em segundo plano.

@@ -343,3 +343,32 @@ test('nomes de quem adiciona: lista primeiro, sem repetir', () => {
   assert.deepStrictEqual(juntarNomes(['JOÃO PEDRO'], ['ana leal', 'JOAO PEDRO', '', 'GABRIEL  ANTÔNIO', 'Ana Leal', '—']),
     ['JOÃO PEDRO', 'ANA LEAL', 'GABRIEL ANTÔNIO']);
 });
+
+test('previsão: peça citada só no teste não vira defeito (casos reais de novembro/2026)', () => {
+  const p = (...obs) => preverPecas('', obs).texto;
+  assert.strictEqual(p('Defeito: NÃO LIGA, LUZ LATERAL PISCA 5 VEZES E LUZ DE CARGA APAGADA', 'Com outro carregador a luz de ligado acende, mas sem imagem na tela e no HDMI',
+    'Sem memória, bateria e SSD: luz fixa e sem imagem na tela e no HDMI'), 'PLACA-MÃE (PROVÁVEL)');
+  assert.strictEqual(p('O NOTEBOOK NÃO LIGAVA MESMO CONECTADO AO CARREGADOR, ENTÃO RETIREI O SSD (MEMÓRIA RAM É SOLDADA NA PLACA), MESMO ASSIM NÃO HOUVE RETORNO'), 'PLACA-MÃE (SUSPEITA)');
+  assert.strictEqual(p('Notebook não permanece ligado sem o carregador conectado', 'Não mexi na bateria, ela continua com defeito'), 'BATERIA (PROVÁVEL)');
+  assert.strictEqual(p('os defeitos de touch pad e teclado fn não estão funcionando'), 'TECLADO (CONFIRMADA), TOUCHPAD (CONFIRMADA)');
+  assert.strictEqual(p('Notebook apresenta defeito na placa de rede', 'Troquei a tela do notebook por uma com pixel morto para fazer manutenção.'), 'WI-FI (CONFIRMADA), TELA (CONFIRMADA)');
+  assert.strictEqual(p('a tela está trincada e o botão power foi retirado para outro computador'), 'TELA (CONFIRMADA), BOTÃO POWER (CONFIRMADA)');
+});
+
+test('escrita da planilha de produção e aparelho sem serial', () => {
+  const { corrigirEscrita, resumoProducao, modeloLimpo, serialInterno, serialParaProducao, completarDeIguais, linhaManutencao } = m.exports;
+  assert.strictEqual(resumoProducao('TROCA DE SDD E REPARO NA INTEFACE DE INICIALIZAÇÂO'), 'TROCA DE SSD E REPARO NA INTERFACE DE INICIALIZAÇÃO');
+  assert.strictEqual(corrigirEscrita('REPARO NO BOTAO DE MIC '), 'REPARO NO BOTÃO DE MIC');
+  assert.strictEqual(corrigirEscrita('REPARO NA INTERFACE DE ÁUDIO'), 'REPARO NA INTERFACE DE ÁUDIO');
+  assert.strictEqual(modeloLimpo(' c4128a - 14 '), 'C4128A-14');
+  assert.strictEqual(serialParaProducao(serialInterno('1111-064512')), 'N\\A');
+  assert.strictEqual(serialParaProducao('4ak30sd05'), '4AK30SD05');
+  assert.deepStrictEqual(linhaManutencao(['Y7', 'MARCA', 'SERIAL'], { 'TÉCNICO': 'Ana Leal', MARCA: 'acer', SERIAL: 'x1' }, '', null), ['ANA LEAL', 'ACER', 'X1']);
+  assert.strictEqual(m.exports.colunaTecnico(['MARCA', 'MODELO']), -1);
+  assert.strictEqual(linhaManutencao(['TÉCNICO', 'SERIAL'], { 'TÉCNICO': 'João Pedro', SERIAL: 'S/N 1111-064512' }, '', null)[1], 'N\\A');
+  assert.deepStrictEqual(completarDeIguais([
+    { EAN: 7908068807629, MODELO: 'C4128A-14', 'DESCRIÇÃO': '', MARCA: 'POSITIVO', TIPO: 'NOTEBOOK' },
+    { EAN: '7908068807629', MODELO: 'C4128A - 14', 'DESCRIÇÃO': 'PROC INTEL CELERON', MARCA: 'POSITIVO', TIPO: 'NOTEBOOK' },
+    { EAN: '', MODELO: 'A515-45', 'DESCRIÇÃO': '', MARCA: 'ACER', TIPO: 'NOTEBOOK' }
+  ], { 'A515-45': 'ACER ASPIRE 5 A515-45, 15,6"' }), [{ i: 0, campo: 'DESCRIÇÃO', valor: 'PROC INTEL CELERON' }, { i: 2, campo: 'DESCRIÇÃO', valor: 'ACER ASPIRE 5 A515-45, 15,6"' }]);
+});
