@@ -18,6 +18,23 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 | `src/Index.html` | Tela do app |
 | `scripts/enviar-notas.js` | Manda `notas/` para o app (usado pelo GitHub) |
 
+## 1.20.0: a previsão aprende, próximo teste e compatibilidade melhor (novembro/2026)
+
+**A previsão aprende com os consertos**
+- A IA recebe os consertos que a oficina já fez no mesmo modelo, contados pela planilha de produção (últimas 6 abas de mês, só leitura): `consertosDoModelo`.
+- Recebe também as lições dos aparelhos que já saíram consertados: o que os técnicos viram, o que o app previa e o que resolveu. Quando a previsão foi diferente do que resolveu, vai marcado como ERROU (`licaoDoConserto`, `resolvidos_`, HISTÓRICO).
+
+**Próximo teste (só no app, a planilha continua limpa)**
+- A IA sugere o teste que tira a dúvida que resta. Sem IA, vale o teste padrão da peça em dúvida (`TESTES`, `testeSugerido`).
+- Se outro aparelho do mesmo modelo tem a peça boa, o app diz qual usar no teste (`doadorDeTeste`).
+
+**Compatibilidade (aba COMPATÍVEIS e "para montar" no app)**
+- Quem precisa de peça da placa (placa-mãe, chip da BIOS, USB, HDMI, P2) não entra como "montar": vira o melhor doador das outras peças.
+- Peça só SUSPEITA não é trocada: aparece em "Antes, testar", com o aparelho que tem uma boa.
+- Mesmo EAN vale como mesmo modelo, mesmo com o modelo escrito diferente.
+- Modelo parecido (C4128E e C4128A-14, A515-45 e A515-45-R043) entra marcado "modelo parecido: conferir o encaixe".
+- Quando os doadores não cobrem tudo, o plano aparece mesmo assim como "MONTAR (FALTA PEÇA)", dizendo o que falta comprar.
+
 ## 1.19.0: previsão do defeito lida pela IA (novembro/2026)
 
 - A IA lê **todas** as anotações do aparelho, em ordem, junto com tipo, marca e modelo, e diz o estado de cada peça: confirmada, provável, suspeita, trocada ou descartada. Antes ela só entrava quando as regras não achavam nada.

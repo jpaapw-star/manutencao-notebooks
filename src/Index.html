@@ -236,7 +236,10 @@ function mostrarMontagens(){
   $('montagens').innerHTML = S.montagens.map(function(m){
     var de = {};
     m.recebe.forEach(function(r){ (de[r.de] = de[r.de] || { sucata: r.sucata, outro: r.outroModelo, pecas: [] }).pecas.push(r.peca); });
-    var l2 = Object.keys(de).map(function(s){ return de[s].pecas.join(', ') + ' ← ' + s + (de[s].sucata ? ' (sucata)' : '') + (de[s].outro ? ' · ' + de[s].outro : ''); }).join('\n');
+    m.recebe.forEach(function(r){ if (r.conferir) de[r.de].conferir = true; });
+    var l2 = Object.keys(de).map(function(s){ return de[s].pecas.join(', ') + ' ← ' + s + (de[s].sucata ? ' (sucata)' : '') + (de[s].outro ? ' · ' + de[s].outro : '') + (de[s].conferir ? ' · modelo parecido, conferir o encaixe' : ''); }).join('\n');
+    if ((m.falta || []).length) l2 += '\nFalta comprar: ' + m.falta.join(', ');
+    if ((m.testar || []).length) l2 += '\nAntes, testar: ' + m.testar.map(function(t){ return t.peca + (t.de ? ' (com a do ' + t.de + ')' : ''); }).join(', ');
     var n = Object.keys(de).length;
     return '<div class="monta" style="border-left:6px solid ' + esc(m.cor || 'transparent') + ';padding-left:12px"><button data-l="' + esc(m.aba + ':' + m.linha) + '">' + esc(m.modelo) + ' · ' + esc(m.serial) + '</button>' +
       '<div class="l2">' + esc(n === 1 ? '1 doador' : n + ' doadores') + '\n' + esc(l2) + '</div></div>';
@@ -280,6 +283,7 @@ function abrir(item){
     return '<button class="chip" type="button">' + esc(n) + '</button>'; }).join('') + '</div>';
   h += '<div class="nr">';
   if (item && it.DEFEITO) h += '<label>DEFEITO (PREVISÃO DAS PEÇAS)</label><div class="notas combina">' + esc(String(it.DEFEITO).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">A IA lê o defeito e todas as observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
+  if (item && it._teste) h += '<label>PRÓXIMO TESTE</label><div class="notas combina">' + esc(it._teste) + '</div>';
   if (item && (it._compradas || []).length) h += '<label>PEÇA COMPRADA QUE SERVE</label><div class="notas combina">' + esc(it._compradas.join('\n')) + '</div>';
   if (item && it['COMBINA COM']) h += '<label>COMBINA COM (MESMO MODELO)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
   h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p></div>';

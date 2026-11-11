@@ -23,11 +23,12 @@ const modelos = (process.env.MODELOS || '').split(',').filter(Boolean);
       const t0 = Date.now(); let txt = '';
       try {
         const r = await fetch(IA_URL + ia + ':generateContent?key=' + encodeURIComponent(chave), { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(30000),
-          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: perguntaPrevisao(c.it, c.textos, nomes, []) }] }], generationConfig: pensar ? { temperature: 0, thinkingConfig: { thinkingLevel: pensar } } : { temperature: 0 } }) });
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: perguntaPrevisao(c.it, c.textos, nomes, c.resolvidos || [], c.experiencia || '') }] }], generationConfig: pensar ? { temperature: 0, thinkingConfig: { thinkingLevel: pensar } } : { temperature: 0 } }) });
         const j = await r.json();
         if (r.status === 200) {
-          txt = previsaoDaIA(j.candidates[0].content.parts.map(x => x.text || '').join(' '), nomes, c.textos).texto || '(nada)';
-          if (txt === c.esperado) certos[iaP] = (certos[iaP] || 0) + 1;
+          const pr = previsaoDaIA(j.candidates[0].content.parts.map(x => x.text || '').join(' '), nomes, c.textos);
+          txt = (pr.texto || '(nada)') + (pr.teste ? '  >> TESTE: ' + pr.teste : '');
+          if (pr.texto === c.esperado) certos[iaP] = (certos[iaP] || 0) + 1;
         } else txt = 'HTTP ' + r.status + ' ' + String((j.error || {}).message || '').slice(0, 120);
       } catch (e) { txt = 'falhou: ' + e.message; }
       console.log(`${iaP} (${((Date.now() - t0) / 1000).toFixed(1)} s): ${txt}`);
