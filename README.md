@@ -18,6 +18,15 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 | `src/Index.html` | Tela do app |
 | `scripts/enviar-notas.js` | Manda `notas/` para o app (usado pelo GitHub) |
 
+## 1.19.0: previsão do defeito lida pela IA (novembro/2026)
+
+- A IA lê **todas** as anotações do aparelho, em ordem, junto com tipo, marca e modelo, e diz o estado de cada peça: confirmada, provável, suspeita, trocada ou descartada. Antes ela só entrava quando as regras não achavam nada.
+- Acontece logo depois de salvar (`apiPrever`, sem segurar a tela) e a cada 2 horas para o que faltar. Uma leitura por texto: se nada mudou nas anotações, não gasta IA de novo.
+- Sem IA (sem chave, sem cota ou fora do ar) continuam valendo as regras, que aparecem na hora.
+- A IA compara com aparelhos que a oficina já consertou (os do mesmo modelo primeiro).
+- Peças novas para controles: ANALÓGICO e GATILHO.
+- `scripts/medir-previsao.js` roda a IA nos casos reais de `tests/previsao-casos.json` (só fora da main).
+
 ## 1.18.0: revisão pelo jeito de trabalhar (novembro/2026)
 
 Feita olhando os aparelhos, o histórico e a planilha de produção dos primeiros dias de uso.

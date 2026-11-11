@@ -321,15 +321,28 @@ function perguntaPrevisao(it, textos, nomes, resolvidos) {
     'DESCARTADA = suspeitaram da peça, mas o teste mostrou que está boa, ou trocar não mudou nada.\n\n' +
     'Regras:\n' +
     '- A anotação mais nova vale mais que a antiga.\n' +
-    '- Peça citada só como parte do teste não entra ("conectado ao carregador", "usei o SSD de outro", "sem memória e bateria", "mensagem na tela").\n' +
-    '- Se o teste com peça boa não mudou o defeito, a peça é DESCARTADA e a suspeita sobe para a PLACA-MÃE.\n' +
+    '- O técnico afirma o defeito da peça ("não funciona", "quebrada", "com defeito", "não segura carga") = CONFIRMADA. Você deduziu pelo sintoma = PROVÁVEL ou SUSPEITA.\n' +
+    '- Peça citada só como parte do teste não entra: "conectado ao carregador", "usei o SSD de outro", "mensagem na tela". ' +
+    '"Sem memória, bateria e SSD" quer dizer que o teste foi feito com essas peças retiradas; elas não estão com defeito.\n' +
+    '- Se o teste com outra peça boa não mudou o defeito, a peça é DESCARTADA e a suspeita sobe para a PLACA-MÃE.\n' +
     '- Sem imagem na tela e também no HDMI aponta para a PLACA-MÃE, não para a TELA.\n' +
     '- Só liga com o carregador conectado aponta para a BATERIA.\n' +
-    '- Defeito resolvido só com driver, formatação, atualização ou retirada de senha não é peça.\n' +
-    '- Defeito que o técnico diz que não confirmou não entra.\n' +
+    '- Os técnicos trocam peças entre aparelhos. Se a peça boa saiu daqui e entrou uma ruim ("troquei a tela por uma com pixel morto", ' +
+    '"as peças colocadas estão com defeito", "retirado para outro"), a peça DESTE aparelho é CONFIRMADA, nunca TROCADA.\n' +
+    '- TROCADA só quando a peça nova ou o conserto deixou este aparelho funcionando.\n' +
+    '- Não é peça: senha na BIOS, falta de parafusos, sujeira, driver, formatação, atualização, Windows. Se o defeito sumiu só com isso, não liste nada por causa dele.\n' +
+    '- Defeito que o técnico diz que não confirmou ou não validou não entra.\n' +
     '- Use o que você sabe do modelo (códigos de piscadas, defeitos comuns) só para escolher entre PROVÁVEL e SUSPEITA.\n' +
     '- Não invente: toda peça da resposta precisa de apoio no texto. No máximo 4 peças com defeito.\n\n' +
-    'Resposta: uma linha por peça, no formato PEÇA = ESTADO = trecho curto (até 5 palavras) copiado do texto. Nada além disso. ' +
+    'Exemplos:\n' +
+    '"Não carrega. Testei com outra fonte e continuou igual." -> PLACA-MÃE = PROVÁVEL = continuou igual / CARREGADOR = DESCARTADA = outra fonte\n' +
+    '"Sem bateria e sem HD continua sem imagem na tela e no HDMI" -> PLACA-MÃE = PROVÁVEL = sem imagem\n' +
+    '"Troquei o teclado por um com teclas falhando para usar o bom em outro" -> TECLADO = CONFIRMADA = teclas falhando\n' +
+    '"Fiz a troca da webcam e do cooler, os dois colocados estão com defeito" -> WEBCAM = CONFIRMADA = estão com defeito / COOLER = CONFIRMADA = estão com defeito\n' +
+    '"Tinha senha na BIOS, removi e ficou normal. Faltam parafusos." -> NADA\n' +
+    '"Microfone não funciona e esquenta muito" -> MICROFONE = CONFIRMADA = não funciona / COOLER = PROVÁVEL = esquenta muito\n' +
+    '"Troquei o HD e voltou a iniciar normal" -> SSD = TROCADA = troquei o HD\n\n' +
+    'Resposta só para o aparelho acima: uma linha por peça, no formato PEÇA = ESTADO = trecho curto (até 5 palavras) copiado do texto. Nada além disso. ' +
     'Se nada aponta para uma peça, responda NADA.';
 }
 
