@@ -22,6 +22,8 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 
 - A IA lê **todas** as anotações do aparelho, em ordem, junto com tipo, marca e modelo, e diz o estado de cada peça: confirmada, provável, suspeita, trocada ou descartada. Antes ela só entrava quando as regras não achavam nada.
 - Acontece logo depois de salvar (`apiPrever`, sem segurar a tela) e a cada 2 horas para o que faltar. Uma leitura por texto: se nada mudou nas anotações, não gasta IA de novo.
+- Duas travas: peça citada só como parte do teste não entra mesmo que a IA diga, e peça que as regras deram como CONFIRMADA não some se a IA esquecer dela.
+- Medido em 16 casos reais: com raciocínio (`thinkingLevel: high`) a IA erra menos; por isso tenta assim primeiro e, sem resposta, sem raciocínio.
 - Sem IA (sem chave, sem cota ou fora do ar) continuam valendo as regras, que aparecem na hora.
 - A IA compara com aparelhos que a oficina já consertou (os do mesmo modelo primeiro).
 - Peças novas para controles: ANALÓGICO e GATILHO.

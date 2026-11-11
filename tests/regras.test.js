@@ -247,6 +247,9 @@ test('previsão da IA vale no lugar das regras quando existe', () => {
   assert.strictEqual(previsaoFinal(regras, undefined), regras);
   const f = previsaoFinal(regras, 'PLACA-MÃE (PROVÁVEL) | DESCARTADO: TELA');
   assert.deepStrictEqual(f.pecas, ['PLACA-MÃE']);
+  const conf = { texto: 'TECLADO (CONFIRMADA), TOUCHPAD (CONFIRMADA), TELA (SUSPEITA) | DESCARTADO: SSD', pecas: ['TECLADO', 'TOUCHPAD', 'TELA'] };
+  assert.strictEqual(previsaoFinal(conf, 'TOUCHPAD (PROVÁVEL)').texto, 'TECLADO (CONFIRMADA), TOUCHPAD (PROVÁVEL)');
+  assert.strictEqual(previsaoFinal(conf, 'DESCARTADO: TOUCHPAD').texto, 'TECLADO (CONFIRMADA) | DESCARTADO: TOUCHPAD');
   const nomes = ['TELA', 'PLACA-MÃE', 'SSD', 'BATERIA', 'WI-FI'];
   const r = previsaoDaIA('1. PLACA-MÃE = SUSPEITA = analisar a placa\n- **TELA** = Confirmada = "tela trincada"\nSSD: DESCARTADO: persistiu\nBATERIA = PROVÁVEL\nWI-FI = TROCADA = troquei\nFOGUETE = CONFIRMADA = x\nTELA = SUSPEITA', nomes);
   assert.strictEqual(r.texto, 'TELA (CONFIRMADA), BATERIA (PROVÁVEL), PLACA-MÃE (SUSPEITA) | TROCADO: WI-FI | DESCARTADO: SSD');

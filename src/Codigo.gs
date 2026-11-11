@@ -290,10 +290,24 @@ function palavrasExtras(linhas) {
   return out;
 }
 
-/** Vale a leitura da IA quando ela existe; sem ela (ou quando ela não achou nada) ficam as regras. Pura. */
+/**
+ * Vale a leitura da IA quando ela existe; sem ela (ou quando ela não achou nada) ficam as regras. Pura.
+ * Peça que as regras deram como CONFIRMADA (o técnico escreveu o defeito com todas as letras) e a IA nem citou continua na previsão.
+ */
 function previsaoFinal(regras, textoIA) {
   textoIA = String(textoIA == null ? '' : textoIA).trim();
   if (!textoIA) return regras;
+  var faltou = [];
+  String(regras.texto || '').split('|')[0].split(',').forEach(function (x) {
+    var m = x.match(/^\s*(.+?) \(CONFIRMADA\)\s*$/);
+    if (m && textoIA.indexOf(m[1]) < 0) faltou.push(m[1] + ' (CONFIRMADA)');
+  });
+  if (faltou.length) {
+    var partes = textoIA.split(' | ');
+    if (/^(TROCADO|DESCARTADO):/.test(partes[0])) partes.unshift(faltou.join(', '));
+    else partes[0] = faltou.concat([partes[0]]).join(', ');
+    textoIA = partes.join(' | ');
+  }
   return { texto: textoIA, pecas: pecasDaColuna(textoIA) };
 }
 
