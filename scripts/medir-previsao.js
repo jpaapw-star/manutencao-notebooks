@@ -18,7 +18,7 @@ const modelos = (process.env.MODELOS || '').split(',').filter(Boolean);
     console.log(`\n## ${c.it.MARCA} ${c.it.MODELO}: ${c.textos.join(' / ').slice(0, 110)}`);
     console.log(`esperado: ${c.esperado}`);
     console.log(`regras:   ${preverPecas('', c.textos).texto || '(nada)'}`);
-    for (const iaP of (modelos.length ? modelos : ['gemini-3.1-flash-lite-preview', 'gemini-3.1-flash-lite-preview@high', 'gemini-flash-lite-latest', 'gemini-flash-lite-latest@high', 'gemini-3-flash-preview'])) {
+    for (const iaP of (modelos.length ? modelos : ['gemini-3.1-flash-lite-preview@high', 'gemini-flash-lite-latest@high', 'gemini-3.1-flash-lite-preview'])) {
       const [ia, pensar] = iaP.split('@');
       const t0 = Date.now(); let txt = '';
       try {
@@ -26,7 +26,7 @@ const modelos = (process.env.MODELOS || '').split(',').filter(Boolean);
           body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: perguntaPrevisao(c.it, c.textos, nomes, []) }] }], generationConfig: pensar ? { temperature: 0, thinkingConfig: { thinkingLevel: pensar } } : { temperature: 0 } }) });
         const j = await r.json();
         if (r.status === 200) {
-          txt = previsaoDaIA(j.candidates[0].content.parts.map(x => x.text || '').join(' '), nomes).texto || '(nada)';
+          txt = previsaoDaIA(j.candidates[0].content.parts.map(x => x.text || '').join(' '), nomes, c.textos).texto || '(nada)';
           if (txt === c.esperado) certos[iaP] = (certos[iaP] || 0) + 1;
         } else txt = 'HTTP ' + r.status + ' ' + String((j.error || {}).message || '').slice(0, 120);
       } catch (e) { txt = 'falhou: ' + e.message; }

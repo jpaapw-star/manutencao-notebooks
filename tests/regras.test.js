@@ -254,6 +254,10 @@ test('previsão da IA vale no lugar das regras quando existe', () => {
   assert.deepStrictEqual(pecasDaColuna(r.texto), ['TELA', 'BATERIA', 'PLACA-MÃE']);
   assert.deepStrictEqual(r.palavras, [{ peca: 'PLACA-MÃE', palavra: 'ANALISAR A PLACA' }, { peca: 'TELA', palavra: 'TELA TRINCADA' }]);
   assert.strictEqual(previsaoDaIA('NADA', nomes).texto, '');
+  // Peça citada só como parte do teste não entra, mesmo que a IA diga; descartada pode.
+  const t3 = ['Com outro carregador a luz acende, mas sem imagem na tela e no HDMI', 'Sem memória, bateria e SSD: luz fixa e sem imagem'];
+  assert.strictEqual(previsaoDaIA('BATERIA = PROVÁVEL = sem bateria\nPLACA-MÃE = PROVÁVEL = sem imagem\nSSD = DESCARTADA = sem SSD', nomes, t3).texto, 'PLACA-MÃE (PROVÁVEL) | DESCARTADO: SSD');
+  assert.strictEqual(previsaoDaIA('BATERIA = CONFIRMADA = continua com defeito', nomes, ['Não mexi na bateria, ela continua com defeito']).texto, 'BATERIA (CONFIRMADA)');
   const p = perguntaPrevisao({ TIPO: 'NOTEBOOK', MARCA: 'ACER', MODELO: 'A515-45' }, ['Defeito: NÃO LIGA', '', 'Sem imagem'], nomes, ['Trocado o SSD']);
   assert.match(p, /Aparelho: NOTEBOOK ACER A515-45/);
   assert.match(p, /1\. Defeito: NÃO LIGA\n2\. Sem imagem/);

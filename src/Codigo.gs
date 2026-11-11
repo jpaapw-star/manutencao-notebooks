@@ -349,15 +349,29 @@ function perguntaPrevisao(it, textos, nomes, resolvidos) {
 /**
  * Resposta da IA ("TELA = CONFIRMADA = tela trincada") no texto da coluna DEFEITO e nas palavras para as regras aprenderem. Pura.
  */
-function previsaoDaIA(t, nomes) {
+function previsaoDaIA(t, nomes, textos, lista) {
   var est = {}, ordem = [], palavras = [];
+  // Trava: peça que os técnicos só citaram como parte do teste ("sem memória, bateria e SSD") não entra como defeito, mesmo que a IA diga.
+  var cru = '', limpo = '';
+  (textos || []).forEach(function (x) {
+    String(x == null ? '' : x).split(/[.;\n!?]+/).forEach(function (fr) {
+      cru += ' ' + semAcento_(fr).replace(/[^A-Z0-9-]+/g, ' ') + ' ';
+      limpo += ' ' + semContexto(fr).replace(/[^A-Z0-9-]+/g, ' ') + ' ';
+    });
+  });
+  var soNoTeste = function (pc) {
+    var p = (lista || PREVER).filter(function (x) { return x[0] === pc; })[0];
+    if (!p || !cru.trim()) return false;
+    var ws = p[1].concat(p[2]);
+    return ws.some(function (w) { return cru.indexOf(w) >= 0; }) && !ws.some(function (w) { return limpo.indexOf(w) >= 0; });
+  };
   String(t || '').split(/\n+/).forEach(function (l) {
     var p = l.replace(/^\s*[-*•\d.)]*\s*/, '').replace(/\*/g, '').split(/\s*[=:|]\s*/);
     if (p.length < 2) return;
     var nome = semAcento_(p[0]).trim();
     var pc = (nomes || []).filter(function (n) { return semAcento_(n) === nome; })[0];
     var e = ESTADOS_IA[semAcento_(p[1]).trim().split(/\s+/)[0]];
-    if (!pc || !e || est[pc]) return;
+    if (!pc || !e || est[pc] || (NIVEL[e] && soNoTeste(pc))) return;
     est[pc] = e; ordem.push(pc);
     var w = String(p[2] || '').replace(/["“”.]/g, '').trim();
     if (NIVEL[e] && w.length >= 4 && w.split(/\s+/).length <= 5) palavras.push({ peca: pc, palavra: w.toUpperCase() });
@@ -906,10 +920,13 @@ function preverComIA_(ss, limite, serial) {
     if (textos.join(' ').trim().length < 4) return;
     var chave = chavePrevisao_(it, textos);
     if (guardado[chave] !== undefined) return;
-    var t = pesquisarIA_(k, perguntaPrevisao(it, textos, nomes, resolvidos_(mapa, d.itens, it)), []);
+    // Com raciocínio a IA acerta mais (medido nos casos reais); se nenhum modelo responder assim, tenta sem.
+    var pergunta = perguntaPrevisao(it, textos, nomes, resolvidos_(mapa, d.itens, it));
+    var t = pesquisarIA_(k, pergunta, [], 'high');
+    if (t === null) t = pesquisarIA_(k, pergunta, []);
     feitas++;
     if (t === null) return;
-    var r = previsaoDaIA(t, nomes);
+    var r = previsaoDaIA(t, nomes, textos, vocabulario(extras));
     props.setProperty(chave, r.texto);
     mudou = true;
     var regras = preverPecas('', textos, extras).pecas;
@@ -937,21 +954,22 @@ function preverComIA_(ss, limite, serial) {
 /** Chamado pela tela logo depois de salvar: a IA lê as anotações do aparelho salvo (e de mais alguns que faltam) e devolve a previsão nova. */
 function apiPrever(serial) {
   var ss = planilha_();
-  var feitas = preverComIA_(ss, 4, serial);
+  var feitas = preverComIA_(ss, 2, serial);
   var alvo = normalizarSerial(serial || ''), defeito = null;
   if (feitas && alvo) lerTudo_(ss).itens.forEach(function (it) { if (normalizarSerial(it.SERIAL) === alvo) defeito = String(it[COL_DEF] || ''); });
   return { feitas: feitas, defeito: defeito };
 }
 
 /** Pergunta curta à IA com busca do Google; devolve o texto, '' se respondeu NADA, null se não respondeu. */
-function pesquisarIA_(k, pergunta, ferramentas) {
+function pesquisarIA_(k, pergunta, ferramentas, pensar) {
   if (!ferramentas) ferramentas = [{ google_search: {} }];
   for (var i = 0; i < IA_MODELOS.length; i++) {
     var r;
     try {
       r = UrlFetchApp.fetch(IA_URL + IA_MODELOS[i] + ':generateContent?key=' + encodeURIComponent(k), {
         method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-        payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: pergunta }] }], tools: ferramentas.length ? ferramentas : undefined, generationConfig: { temperature: 0 } })
+        payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: pergunta }] }], tools: ferramentas.length ? ferramentas : undefined,
+          generationConfig: pensar ? { temperature: 0, thinkingConfig: { thinkingLevel: pensar } } : { temperature: 0 } })
       });
     } catch (x) { continue; }
     if (r.getResponseCode() !== 200) continue;
@@ -2169,7 +2187,7 @@ function aplicarNota_(n) {
 /** Gatilho a cada SINCRONIZAR_HORAS: o que já passou no controle de qualidade vira FINALIZADO. */
 function sincronizarQualidade() {
   prepararPlanilha_();
-  try { pesquisarPecas_(planilha_(), 5); pesquisarIrmaos_(planilha_(), 6); preverComIA_(planilha_(), 12); } catch (x) { console.log('pesquisa de peças: ' + x); }
+  try { pesquisarPecas_(planilha_(), 5); pesquisarIrmaos_(planilha_(), 6); preverComIA_(planilha_(), 8); } catch (x) { console.log('pesquisa de peças: ' + x); }
   var q = SpreadsheetApp.openById(PLANILHAS.QUALIDADE).getSheetByName(QUALIDADE_ABA);
   if (!q) throw new Error('Aba ' + QUALIDADE_ABA + ' não encontrada no controle de qualidade.');
   var fin = seriaisFinalizados(q.getDataRange().getValues(), FINALIZA_SO_APROVADO);
