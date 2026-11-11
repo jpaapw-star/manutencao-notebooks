@@ -257,6 +257,9 @@ test('previsão da IA vale no lugar das regras quando existe', () => {
   assert.deepStrictEqual(pecasDaColuna(r.texto), ['TELA', 'BATERIA', 'PLACA-MÃE']);
   assert.deepStrictEqual(r.palavras, [{ peca: 'PLACA-MÃE', palavra: 'ANALISAR A PLACA' }, { peca: 'TELA', palavra: 'TELA TRINCADA' }]);
   assert.strictEqual(previsaoDaIA('NADA', nomes).texto, '');
+  const pl = previsaoDaIA('BATERIA = PROVÁVEL = sem o carregador\nPLACA-MÃE = PROVÁVEL = sem o carregador = CIRCUITO DE CARGA\nSSD = DESCARTADA = persistiu', nomes);
+  assert.strictEqual(pl.texto, 'BATERIA (PROVÁVEL), PLACA-MÃE (PROVÁVEL · CIRCUITO DE CARGA) | DESCARTADO: SSD');
+  assert.deepStrictEqual(pecasDaColuna(pl.texto), ['BATERIA', 'PLACA-MÃE']);
   // Peça citada só como parte do teste não entra, mesmo que a IA diga; descartada pode.
   const t3 = ['Com outro carregador a luz acende, mas sem imagem na tela e no HDMI', 'Sem memória, bateria e SSD: luz fixa e sem imagem'];
   assert.strictEqual(previsaoDaIA('BATERIA = PROVÁVEL = sem bateria\nPLACA-MÃE = PROVÁVEL = sem imagem\nSSD = DESCARTADA = sem SSD', nomes, t3).texto, 'PLACA-MÃE (PROVÁVEL) | DESCARTADO: SSD');
@@ -366,7 +369,7 @@ test('previsão: peça citada só no teste não vira defeito (casos reais de nov
   assert.strictEqual(p('Defeito: NÃO LIGA, LUZ LATERAL PISCA 5 VEZES E LUZ DE CARGA APAGADA', 'Com outro carregador a luz de ligado acende, mas sem imagem na tela e no HDMI',
     'Sem memória, bateria e SSD: luz fixa e sem imagem na tela e no HDMI'), 'PLACA-MÃE (PROVÁVEL)');
   assert.strictEqual(p('O NOTEBOOK NÃO LIGAVA MESMO CONECTADO AO CARREGADOR, ENTÃO RETIREI O SSD (MEMÓRIA RAM É SOLDADA NA PLACA), MESMO ASSIM NÃO HOUVE RETORNO'), 'PLACA-MÃE (SUSPEITA)');
-  assert.strictEqual(p('Notebook não permanece ligado sem o carregador conectado', 'Não mexi na bateria, ela continua com defeito'), 'BATERIA (PROVÁVEL)');
+  assert.strictEqual(p('Notebook não permanece ligado sem o carregador conectado', 'Não mexi na bateria, ela continua com defeito'), 'BATERIA (PROVÁVEL), PLACA-MÃE (SUSPEITA)');
   assert.strictEqual(p('os defeitos de touch pad e teclado fn não estão funcionando'), 'TECLADO (CONFIRMADA), TOUCHPAD (CONFIRMADA)');
   assert.strictEqual(p('Notebook apresenta defeito na placa de rede', 'Troquei a tela do notebook por uma com pixel morto para fazer manutenção.'), 'WI-FI (CONFIRMADA), TELA (CONFIRMADA)');
   assert.strictEqual(p('a tela está trincada e o botão power foi retirado para outro computador'), 'TELA (CONFIRMADA), BOTÃO POWER (CONFIRMADA)');

@@ -158,7 +158,7 @@ var PREVER = [
   ['BOTÃO POWER', ['BOTAO POWER', 'BOTAO DE LIGAR', 'BOTAO LIGA', 'BOTAO DE POWER', 'POTAO POWER'], [], []],
   ['ANALÓGICO', ['ANALOGICO', 'JOYSTICK', 'JOY-CON', 'JOYCON'], ['DRIFT', 'ANDA SOZINHO'], []],
   ['GATILHO', ['GATILHO', ' R2 ', ' L2 ', ' ZR ', ' ZL '], [], []],
-  ['PLACA-MÃE', ['PLACA MAE', 'PLACA-MAE', 'MOTHERBOARD', ' SER A PLACA ', 'ANALISAR A PLACA', 'CORROID', 'OXIDAD', 'MOLHAD', 'CAIU AGUA', 'CAIU LIQUIDO'], ['NAO LIGA', 'EM CURTO', 'NAO ACENDE', 'PLACA MORTA'], []]
+  ['PLACA-MÃE', ['PLACA MAE', 'PLACA-MAE', 'MOTHERBOARD', ' SER A PLACA ', 'ANALISAR A PLACA', 'CORROID', 'OXIDAD', 'MOLHAD', 'CAIU AGUA', 'CAIU LIQUIDO'], ['NAO LIGA', 'EM CURTO', 'NAO ACENDE', 'PLACA MORTA', 'SO LIGA NA TOMADA', 'SO FUNCIONA NA TOMADA'], []]
 ];
 var P_IGNORA = /ESPERADO|SO PARA TESTE|PARA TESTAR/;
 var P_NEGA = /NAO (ESTA |ESTAO |ESTAVA |ESTAVAM |TA |TAO )?(FUNCION\w*|LIGA\w*|CARREG\w*|RECONHEC\w*|PEGA\w*|RESPOND\w*|ACEND\w*|ABRE|ENTRA|DA \w+)/g;
@@ -174,6 +174,7 @@ var P_PIOROU = /POR (UM|UMA|OUTR[OA]) (COM |QUEBRAD|TRINCAD|RUIM|DEFEIT|QUEIMAD)
 var P_CONTEXTO = [
   [/\([^)]*\)/g, function (x) { return P_IGNORA.test(x) || /SUSPEIT|PROVAVE|CONFIRM|DEFEIT/.test(x) ? x : ' '; }],
   [/(NAO|SO) [A-Z ]{0,30}?(SEM|FORA D[OA]|COM) (O |A )?(CARREGADOR|FONTE|TOMADA)( CONECTAD\w*| LIGAD\w*)?/g, ' SO LIGA NA TOMADA '],
+  [/SO (LIGA|FUNCIONA|FICA LIGADO|PERMANECE LIGADO) (NO|NA|COM|COM O|COM A|CONECTADO AO?|LIGADO NA?) (CARREGADOR|FONTE|TOMADA)/g, ' SO LIGA NA TOMADA '],
   [/SEM (IMAGEM|VIDEO) (NA TELA|NO HDMI) (E|NEM) (NA TELA|NO HDMI)/g, ' PLACA MAE '],
   [/(CONECTAD\w*|LIGAD\w*|PLUGAD\w*) (AO?|NO|NA|EM) (CARREGADOR|FONTE|TOMADA)/g, ' '],
   [/MESMO (AO?|NO|COM O?) ?(CARREGADOR|FONTE)/g, ' '],
@@ -311,6 +312,8 @@ function previsaoFinal(regras, textoIA) {
   return { texto: textoIA, pecas: pecasDaColuna(textoIA) };
 }
 
+// Área da placa-mãe que a IA pode apontar: aparece como "PLACA-MÃE (PROVÁVEL · CIRCUITO DE CARGA)".
+var AREAS_PLACA = ['CIRCUITO DE CARGA', 'VÍDEO', 'ÁUDIO', 'USB', 'CURTO'];
 var ESTADOS_IA = { CONFIRMADA: 'CONFIRMADA', CONFIRMADO: 'CONFIRMADA', PROVAVEL: 'PROVÁVEL', SUSPEITA: 'SUSPEITA', TROCADA: 'TROCADA', TROCADO: 'TROCADA', DESCARTADA: 'DESCARTADA', DESCARTADO: 'DESCARTADA' };
 
 /**
@@ -340,7 +343,10 @@ function perguntaPrevisao(it, textos, nomes, resolvidos) {
     '"Sem memória, bateria e SSD" quer dizer que o teste foi feito com essas peças retiradas; elas não estão com defeito.\n' +
     '- Se o teste com outra peça boa não mudou o defeito, a peça é DESCARTADA e a suspeita sobe para a PLACA-MÃE.\n' +
     '- Sem imagem na tela e também no HDMI aponta para a PLACA-MÃE, não para a TELA.\n' +
-    '- Só liga com o carregador conectado aponta para a BATERIA.\n' +
+    '- Só liga ou só fica ligado com o carregador conectado: pode ser a BATERIA ou o circuito de carga da PLACA-MÃE. ' +
+    'Enquanto ninguém testou com outra bateria boa, liste as duas: BATERIA = PROVÁVEL (mesmo que o técnico diga que ela está com defeito sem ter testado) ' +
+    'e PLACA-MÃE = PROVÁVEL com a área CIRCUITO DE CARGA. Com bateria boa testada e o defeito igual, BATERIA = DESCARTADA e PLACA-MÃE sobe.\n' +
+    '- Não carrega com carregador bom também aponta para o CIRCUITO DE CARGA da PLACA-MÃE.\n' +
     '- Os técnicos trocam peças entre aparelhos. Se a peça boa saiu daqui e entrou uma ruim ("troquei a tela por uma com pixel morto", ' +
     '"as peças colocadas estão com defeito", "retirado para outro"), a peça DESTE aparelho é CONFIRMADA, nunca TROCADA.\n' +
     '- TROCADA só quando a peça nova ou o conserto deixou este aparelho funcionando.\n' +
@@ -349,14 +355,16 @@ function perguntaPrevisao(it, textos, nomes, resolvidos) {
     '- Use o que você sabe do modelo (códigos de piscadas, defeitos comuns) só para escolher entre PROVÁVEL e SUSPEITA.\n' +
     '- Não invente: toda peça da resposta precisa de apoio no texto. No máximo 4 peças com defeito.\n\n' +
     'Exemplos:\n' +
-    '"Não carrega. Testei com outra fonte e continuou igual." -> PLACA-MÃE = PROVÁVEL = continuou igual / CARREGADOR = DESCARTADA = outra fonte\n' +
+    '"Não carrega. Testei com outra fonte e continuou igual." -> PLACA-MÃE = PROVÁVEL = continuou igual = CIRCUITO DE CARGA / CARREGADOR = DESCARTADA = outra fonte\n' +
+    '"Desliga quando tira da tomada" -> BATERIA = PROVÁVEL = desliga quando tira / PLACA-MÃE = PROVÁVEL = desliga quando tira = CIRCUITO DE CARGA\n' +
     '"Sem bateria e sem HD continua sem imagem na tela e no HDMI" -> PLACA-MÃE = PROVÁVEL = sem imagem\n' +
     '"Troquei o teclado por um com teclas falhando para usar o bom em outro" -> TECLADO = CONFIRMADA = teclas falhando\n' +
     '"Fiz a troca da webcam e do cooler, os dois colocados estão com defeito" -> WEBCAM = CONFIRMADA = estão com defeito / COOLER = CONFIRMADA = estão com defeito\n' +
     '"Tinha senha na BIOS, removi e ficou normal. Faltam parafusos." -> NADA\n' +
     '"Microfone não funciona e esquenta muito" -> MICROFONE = CONFIRMADA = não funciona / COOLER = PROVÁVEL = esquenta muito\n' +
     '"Troquei o HD e voltou a iniciar normal" -> SSD = TROCADA = troquei o HD\n\n' +
-    'Resposta só para o aparelho acima: uma linha por peça, no formato PEÇA = ESTADO = trecho curto (até 5 palavras) copiado do texto. Nada além disso. ' +
+    'Resposta só para o aparelho acima: uma linha por peça, no formato PEÇA = ESTADO = trecho curto (até 5 palavras) copiado do texto. ' +
+    'Só na PLACA-MÃE, quando der para saber, acrescente no fim a área: = CIRCUITO DE CARGA, = VÍDEO, = ÁUDIO, = USB ou = CURTO. Nada além disso. ' +
     'Se nada aponta para uma peça, responda NADA.';
 }
 
@@ -364,7 +372,7 @@ function perguntaPrevisao(it, textos, nomes, resolvidos) {
  * Resposta da IA ("TELA = CONFIRMADA = tela trincada") no texto da coluna DEFEITO e nas palavras para as regras aprenderem. Pura.
  */
 function previsaoDaIA(t, nomes, textos, lista) {
-  var est = {}, ordem = [], palavras = [];
+  var est = {}, ordem = [], palavras = [], area = {};
   // Trava: peça que os técnicos só citaram como parte do teste ("sem memória, bateria e SSD") não entra como defeito, mesmo que a IA diga.
   var cru = '', limpo = '';
   (textos || []).forEach(function (x) {
@@ -387,13 +395,15 @@ function previsaoDaIA(t, nomes, textos, lista) {
     var e = ESTADOS_IA[semAcento_(p[1]).trim().split(/\s+/)[0]];
     if (!pc || !e || est[pc] || (NIVEL[e] && soNoTeste(pc))) return;
     est[pc] = e; ordem.push(pc);
+    var ar = pc === 'PLACA-MÃE' && NIVEL[e] ? AREAS_PLACA.filter(function (a) { return semAcento_(p.slice(2).join(' ')).indexOf(semAcento_(a)) >= 0; })[0] : '';
+    if (ar) area[pc] = ar;
     var w = String(p[2] || '').replace(/["“”.]/g, '').trim();
     if (NIVEL[e] && w.length >= 4 && w.split(/\s+/).length <= 5) palavras.push({ peca: pc, palavra: w.toUpperCase() });
   });
   var def = ordem.filter(function (pc) { return NIVEL[est[pc]]; }).sort(function (a, b) { return NIVEL[est[b]] - NIVEL[est[a]]; }).slice(0, 4);
   var troc = ordem.filter(function (pc) { return est[pc] === 'TROCADA'; });
   var desc = ordem.filter(function (pc) { return est[pc] === 'DESCARTADA'; });
-  var partes = [def.map(function (pc) { return pc + ' (' + est[pc] + ')'; }).join(', ')];
+  var partes = [def.map(function (pc) { return pc + ' (' + est[pc] + (area[pc] ? ' · ' + area[pc] : '') + ')'; }).join(', ')];
   if (troc.length) partes.push('TROCADO: ' + troc.join(', '));
   if (desc.length) partes.push('DESCARTADO: ' + desc.join(', '));
   return { texto: partes.filter(String).join(' | '), pecas: def, palavras: palavras.filter(function (x) { return def.indexOf(x.peca) >= 0; }) };
@@ -888,7 +898,7 @@ function pesquisarIrmaos_(ss, limite) {
 
 /** Chave da leitura da IA: muda quando muda o aparelho (tipo/modelo) ou qualquer anotação. */
 function chavePrevisao_(it, textos) {
-  return 'prev3:' + Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5,
+  return 'prev4:' + Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5,
     [it.TIPO, it.MARCA, it.MODELO].concat(textos).join('\n'), Utilities.Charset.UTF_8));
 }
 

@@ -29,6 +29,7 @@ jobs:
         timeout-minutes: 12
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SO: 'carregador|tomada|carga'
         run: node scripts/medir-previsao.js | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Conferir se o app abre sem login
         continue-on-error: true

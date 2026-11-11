@@ -13,12 +13,12 @@ const casos = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'tests', 'pr
 const modelos = (process.env.MODELOS || '').split(',').filter(Boolean);
 (async () => {
   let certos = {}, total = 0;
-  for (const c of casos) {
+  for (const c of casos.filter(c => !process.env.SO || c.textos.join(' ').match(new RegExp(process.env.SO, 'i')))) {
     total++;
     console.log(`\n## ${c.it.MARCA} ${c.it.MODELO}: ${c.textos.join(' / ').slice(0, 110)}`);
     console.log(`esperado: ${c.esperado}`);
     console.log(`regras:   ${preverPecas('', c.textos).texto || '(nada)'}`);
-    for (const iaP of (modelos.length ? modelos : ['gemini-3.1-flash-lite-preview@high', 'gemini-flash-lite-latest@high', 'gemini-3.1-flash-lite-preview'])) {
+    for (const iaP of (modelos.length ? modelos : ['gemini-3.1-flash-lite-preview@high', 'gemini-3.1-flash-lite-preview'])) {
       const [ia, pensar] = iaP.split('@');
       const t0 = Date.now(); let txt = '';
       try {
