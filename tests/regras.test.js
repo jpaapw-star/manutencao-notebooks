@@ -145,9 +145,13 @@ test('montagem: vários doadores fazem um notebook, cada peça usada uma vez', (
   assert.strictEqual(p[0].serial, 'ALVO');
   const de = {};
   p[0].recebe.forEach(r => { de[r.peca] = r.de; });
-  assert.deepStrictEqual(de, { TELA: 'D1', WEBCAM: 'D2', TECLADO: 'D2' });
+  // Peça só suspeita não é trocada: fica para testar, com o doador que tem uma boa.
+  assert.deepStrictEqual(de, { TELA: 'D1', WEBCAM: 'D2' });
+  assert.deepStrictEqual(p[0].testar, [{ peca: 'TECLADO', de: 'D2' }]);
+  assert.deepStrictEqual(p[0].falta, []);
   const l = linhasCompativeis(p, itens);
   assert.strictEqual(l.length, 3);
+  assert.match(l[0].valores[7], /Antes, testar: TECLADO \(com a do D2\)/);
   assert.deepStrictEqual(l.map(x => x.valores[1]), ['MONTAR', 'DOADOR (SUCATA)', 'DOADOR (SUCATA)']);
   assert.ok(l.every(x => x.grupo === 0));
   // Dois que se ajudam também viram grupo; quem já doou não é montado.
@@ -217,7 +221,43 @@ test('compatibilidade: peça universal e modelos que compartilham peça', () => 
   assert.deepStrictEqual(de, { TELA: 'B', SSD: 'B' });
   assert.strictEqual(p[0].recebe[0].outroModelo, 'VIVOBOOK X1504ZA');
   // sem a tabela, tela de outro modelo não serve
-  assert.strictEqual(planosDeMontagem(itens, [], compatDe(['SSD'], [])).length, 0);
+  const parte = planosDeMontagem(itens, [], compatDe(['SSD'], []));
+  assert.strictEqual(parte.length, 1);
+  assert.deepStrictEqual(parte[0].recebe.map(r => r.peca), ['SSD']);
+  assert.deepStrictEqual(parte[0].falta, ['TELA']);
+  assert.strictEqual(linhasCompativeis(parte, itens)[0].valores[1], 'MONTAR (FALTA PEÇA)');
+  assert.match(linhasCompativeis(parte, itens)[0].valores[7], /Falta comprar: TELA/);
+});
+
+test('compatibilidade: placa não se recebe, mesmo EAN, modelo parecido e grau da peça', () => {
+  const { pecasComGrau, modeloParecido } = m.exports;
+  assert.deepStrictEqual(pecasComGrau('TELA (CONFIRMADA), PLACA-MÃE (PROVÁVEL · CIRCUITO DE CARGA), SSD (SUSPEITA · IA), WEBCAM | DESCARTADO: FLAT'),
+    [{ peca: 'TELA', grau: 'CONFIRMADA' }, { peca: 'PLACA-MÃE', grau: 'PROVÁVEL' }, { peca: 'SSD', grau: 'SUSPEITA' }, { peca: 'WEBCAM', grau: 'CONFIRMADA' }]);
+  assert.ok(modeloParecido('C4128E', 'C4128A-14', 'POSITIVO', 'POSITIVO'));
+  assert.ok(modeloParecido('ASPIRE A515-45', 'A515-45-R043', 'ACER', 'ACER'));
+  assert.ok(!modeloParecido('C4128E', 'C4128A-14', 'POSITIVO', 'DELL'));
+  assert.ok(!modeloParecido('AG15-51P-39MU', 'AG15-71P-5939', 'ACER', 'ACER'));
+  assert.ok(!modeloParecido('VJFE54F11X', 'VJFE52F11X', 'VAIO', 'VAIO'));
+  assert.ok(!modeloParecido('15IRH10', '15ARP10', 'LENOVO', 'LENOVO'));
+  // Quem precisa de placa não é montado, mas doa a tela; modelo parecido entra marcado para conferir.
+  const itens = [
+    { MARCA: 'POSITIVO', MODELO: 'C4128E', SERIAL: 'A', DEFEITO: 'TELA (CONFIRMADA), PLACA-MÃE (SUSPEITA)', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 2 },
+    { MARCA: 'POSITIVO', MODELO: 'C4128A-14', SERIAL: 'B', DEFEITO: 'PLACA-MÃE (CONFIRMADA)', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 3 },
+    { MARCA: 'POSITIVO', MODELO: 'C4128A - 14', SERIAL: 'C', DEFEITO: 'ÁUDIO (CONFIRMADA)', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 4 }
+  ];
+  const p = planosDeMontagem(itens);
+  assert.deepStrictEqual(p.map(x => x.serial), ['A', 'C']);
+  assert.deepStrictEqual(p[1].recebe.map(r => [r.peca, r.de, r.conferir]), [['ÁUDIO', 'B', false]]);
+  assert.deepStrictEqual(p[0].recebe.map(r => [r.peca, r.de, r.conferir]), [['TELA', 'B', true]]);
+  assert.deepStrictEqual(p[0].testar, [{ peca: 'PLACA-MÃE', de: '' }]);
+  assert.match(linhasCompativeis(p, itens)[1].valores[7], /modelo parecido: conferir o encaixe/);
+  // Mesmo EAN vale como mesmo modelo, mesmo com o modelo escrito diferente.
+  const ean = planosDeMontagem([
+    { MODELO: 'VISION C15M', EAN: '7908068807629', SERIAL: 'X', DEFEITO: 'TELA', 'SITUAÇÃO': 'EM ANÁLISE', _linha: 2 },
+    { MODELO: 'C4128B-15', EAN: '7908068807629', SERIAL: 'Y', DEFEITO: 'PLACA-MÃE', 'SITUAÇÃO': 'SUCATA', _linha: 3 }
+  ]);
+  assert.strictEqual(ean.length, 1);
+  assert.strictEqual(ean[0].recebe[0].conferir, false);
 });
 
 test('código da peça: tira o part number da resposta da IA', () => {
@@ -240,14 +280,79 @@ test('vocabulário: palavras novas e as que o João ensina na LISTAS', () => {
   assert.match(preverPecas('lente quebrada', [], ex).texto, /TELA \(CONFIRMADA\)/);
 });
 
-test('previsão da IA só entra quando as regras não acham nada', () => {
-  const { previsaoFinal, respostaPrevisao } = m.exports;
-  assert.deepStrictEqual(previsaoFinal({ texto: 'TELA (PROVÁVEL)', pecas: ['TELA'] }, ['TECLADO']).pecas, ['TELA']);
-  const f = previsaoFinal({ texto: 'DESCARTADO: TELA', pecas: [] }, ['TELA', 'FLAT']);
-  assert.strictEqual(f.texto, 'FLAT (SUSPEITA · IA) | DESCARTADO: TELA');
-  const r = respostaPrevisao('TELA = listras na imagem\n- PLACA-MÃE: "não dá sinal"\nFOGUETE = x', ['TELA', 'PLACA-MÃE']);
-  assert.deepStrictEqual(r.pecas, ['TELA', 'PLACA-MÃE']);
-  assert.deepStrictEqual(r.palavras.map(x => x.palavra), ['LISTRAS NA IMAGEM', 'NÃO DÁ SINAL']);
+test('previsão da IA vale no lugar das regras quando existe', () => {
+  const { previsaoFinal, previsaoDaIA, perguntaPrevisao, pecasDaColuna } = m.exports;
+  const regras = { texto: 'TELA (PROVÁVEL)', pecas: ['TELA'] };
+  assert.strictEqual(previsaoFinal(regras, ''), regras);
+  assert.strictEqual(previsaoFinal(regras, undefined), regras);
+  const f = previsaoFinal(regras, 'PLACA-MÃE (PROVÁVEL) | DESCARTADO: TELA');
+  assert.deepStrictEqual(f.pecas, ['PLACA-MÃE']);
+  const conf = { texto: 'TECLADO (CONFIRMADA), TOUCHPAD (CONFIRMADA), TELA (SUSPEITA) | DESCARTADO: SSD', pecas: ['TECLADO', 'TOUCHPAD', 'TELA'] };
+  assert.strictEqual(previsaoFinal(conf, 'TOUCHPAD (PROVÁVEL)').texto, 'TECLADO (CONFIRMADA), TOUCHPAD (PROVÁVEL)');
+  assert.strictEqual(previsaoFinal(conf, 'DESCARTADO: TOUCHPAD').texto, 'TECLADO (CONFIRMADA) | DESCARTADO: TOUCHPAD');
+  const nomes = ['TELA', 'PLACA-MÃE', 'SSD', 'BATERIA', 'WI-FI'];
+  const r = previsaoDaIA('1. PLACA-MÃE = SUSPEITA = analisar a placa\n- **TELA** = Confirmada = "tela trincada"\nSSD: DESCARTADO: persistiu\nBATERIA = PROVÁVEL\nWI-FI = TROCADA = troquei\nFOGUETE = CONFIRMADA = x\nTELA = SUSPEITA', nomes);
+  assert.strictEqual(r.texto, 'TELA (CONFIRMADA), BATERIA (PROVÁVEL), PLACA-MÃE (SUSPEITA) | TROCADO: WI-FI | DESCARTADO: SSD');
+  assert.deepStrictEqual(r.pecas, ['TELA', 'BATERIA', 'PLACA-MÃE']);
+  assert.deepStrictEqual(pecasDaColuna(r.texto), ['TELA', 'BATERIA', 'PLACA-MÃE']);
+  assert.deepStrictEqual(r.palavras, [{ peca: 'PLACA-MÃE', palavra: 'ANALISAR A PLACA' }, { peca: 'TELA', palavra: 'TELA TRINCADA' }]);
+  assert.strictEqual(previsaoDaIA('NADA', nomes).texto, '');
+  const pl = previsaoDaIA('BATERIA = PROVÁVEL = sem o carregador\nPLACA-MÃE = PROVÁVEL = sem o carregador = CIRCUITO DE CARGA\nSSD = DESCARTADA = persistiu', nomes);
+  assert.strictEqual(pl.texto, 'BATERIA (PROVÁVEL), PLACA-MÃE (PROVÁVEL · CIRCUITO DE CARGA) | DESCARTADO: SSD');
+  assert.deepStrictEqual(pecasDaColuna(pl.texto), ['BATERIA', 'PLACA-MÃE']);
+  // Peça citada só como parte do teste não entra, mesmo que a IA diga; descartada pode.
+  const t3 = ['Com outro carregador a luz acende, mas sem imagem na tela e no HDMI', 'Sem memória, bateria e SSD: luz fixa e sem imagem'];
+  assert.strictEqual(previsaoDaIA('BATERIA = PROVÁVEL = sem bateria\nPLACA-MÃE = PROVÁVEL = sem imagem\nSSD = DESCARTADA = sem SSD', nomes, t3).texto, 'PLACA-MÃE (PROVÁVEL) | DESCARTADO: SSD');
+  assert.strictEqual(previsaoDaIA('BATERIA = CONFIRMADA = continua com defeito', nomes, ['Não mexi na bateria, ela continua com defeito']).texto, 'BATERIA (CONFIRMADA)');
+  const p = perguntaPrevisao({ TIPO: 'NOTEBOOK', MARCA: 'ACER', MODELO: 'A515-45' }, ['Defeito: NÃO LIGA', '', 'Sem imagem'], nomes, ['Trocado o SSD']);
+  assert.match(p, /Aparelho: NOTEBOOK ACER A515-45/);
+  assert.match(p, /1\. Defeito: NÃO LIGA\n2\. Sem imagem/);
+  assert.match(p, /já consertou[^\n]*\n- Trocado o SSD/);
+});
+
+test('próximo teste, lição do conserto e experiência do modelo', () => {
+  const { previsaoDaIA, testeSugerido, doadorDeTeste, pecasCitadas, licaoDoConserto, consertosDoModelo, perguntaPrevisao } = m.exports;
+  const nomes = ['TELA', 'PLACA-MÃE', 'SSD', 'BATERIA', 'FLAT'];
+  const r = previsaoDaIA('BATERIA = PROVÁVEL = só liga no carregador\nPLACA-MÃE = PROVÁVEL = só liga no carregador = CIRCUITO DE CARGA\n**TESTE** = testar com a bateria boa de outro NP750XGJ.', nomes);
+  assert.strictEqual(r.texto, 'BATERIA (PROVÁVEL), PLACA-MÃE (PROVÁVEL · CIRCUITO DE CARGA)');
+  assert.strictEqual(r.teste, 'Testar com a bateria boa de outro NP750XGJ.');
+  assert.strictEqual(previsaoDaIA('TELA = CONFIRMADA = trincada\nTESTE = NADA', nomes).teste, '');
+  assert.strictEqual(previsaoDaIA('TELA = CONFIRMADA = trincada\nTESTE = Substituir a tela por uma boa.', nomes).teste, '');
+  // A IA leu e não viu peça com defeito ("-"): das regras só fica o que foi confirmado, trocado ou descartado.
+  const { previsaoFinal } = m.exports;
+  assert.strictEqual(previsaoFinal({ texto: 'SSD (PROVÁVEL)', pecas: ['SSD'] }, '-').texto, '');
+  assert.strictEqual(previsaoFinal({ texto: 'TELA (CONFIRMADA), SSD (PROVÁVEL) | DESCARTADO: FLAT', pecas: ['TELA', 'SSD'] }, '-').texto, 'TELA (CONFIRMADA) | DESCARTADO: FLAT');
+  assert.strictEqual(previsaoFinal({ texto: 'TROCADO: ÁUDIO', pecas: [] }, '-').texto, 'TROCADO: ÁUDIO');
+  assert.strictEqual(previsaoDaIA('TESTE = medir a entrada', nomes).teste, '');
+  // Sem IA: teste padrão da primeira peça que ainda não está confirmada.
+  assert.match(testeSugerido('TELA (CONFIRMADA), BATERIA (PROVÁVEL)'), /bateria boa/);
+  assert.strictEqual(testeSugerido('TELA (CONFIRMADA)'), '');
+  assert.strictEqual(testeSugerido('DESCARTADO: SSD'), '');
+  const itens = [
+    { MODELO: 'NP750XGJ-KG3BR', SERIAL: 'A', DEFEITO: 'BATERIA (PROVÁVEL)', 'SITUAÇÃO': 'EM ANÁLISE' },
+    { MODELO: 'NP750XGJ-KG3BR', SERIAL: 'B', DEFEITO: 'BATERIA (CONFIRMADA)', 'SITUAÇÃO': 'EM ANÁLISE' },
+    { MODELO: 'NP750XGJ - KG3BR', SERIAL: 'C', DEFEITO: 'TELA (CONFIRMADA)', 'SITUAÇÃO': 'EM ANÁLISE' },
+    { MODELO: 'X515', SERIAL: 'D', DEFEITO: '', 'SITUAÇÃO': 'EM ANÁLISE' }
+  ];
+  assert.strictEqual(doadorDeTeste(itens[0], itens, itens[0].DEFEITO), 'BATERIA boa para o teste: C');
+  assert.strictEqual(doadorDeTeste(itens[1], itens, itens[1].DEFEITO), '');
+  assert.strictEqual(doadorDeTeste(itens[3], itens, 'TELA (SUSPEITA)'), '');
+  assert.deepStrictEqual(pecasCitadas('Troca de SSD e placa de rede'), ['WI-FI', 'SSD']);
+  const errou = licaoDoConserto({ modelo: 'A515-45', sintomas: ['Possível defeito no SSD.'], previsto: 'SSD (PROVÁVEL)', feito: 'TROCA DE TELA' });
+  assert.ok(errou.errou);
+  assert.strictEqual(errou.texto, 'A515-45 | viram: Possível defeito no SSD. | o app previa: SSD (ERROU) | resolveu: TROCA DE TELA');
+  assert.ok(!licaoDoConserto({ sintomas: ['linhas na tela'], previsto: 'TELA (PROVÁVEL)', feito: 'Troquei a tela' }).errou);
+  assert.ok(!licaoDoConserto({ sintomas: [], previsto: 'SSD (PROVÁVEL)', feito: 'REPARO NA INTERFACE DE INICIALIZAÇÃO' }).errou);
+  const prod = [['DELL', 'DC15-I51334U-A50', 'TROCA DE BATERIA'], ['DELL', 'DC15-I51334U-A50', 'REPARO NA INTEFACE DE AUDIO'], ['DELL', 'dc15-i51334u-a50', 'Troca de bateria '],
+    ['ACER', 'A51545R043', 'TROCA DE AUTOFALANTES'], ['POSITIVO', 'DUO C4128E', 'REPARO NA INTERFACE DE VÍDEO'], ['SONY', 'DUALSENSE', '']];
+  assert.strictEqual(consertosDoModelo(prod, { MODELO: 'DC15-I51334U-A50' }), 'TROCA DE BATERIA ×2, REPARO NA INTERFACE DE ÁUDIO');
+  assert.strictEqual(consertosDoModelo(prod, { MODELO: 'A515-45-R043' }), 'TROCA DE AUTOFALANTES');
+  assert.strictEqual(consertosDoModelo(prod, { MODELO: 'C4128E' }), 'REPARO NA INTERFACE DE VÍDEO');
+  assert.strictEqual(consertosDoModelo(prod, { MODELO: 'X515' }), '');
+  const p = perguntaPrevisao({ MODELO: 'DC15' }, ['não liga'], nomes, [errou.texto], 'TROCA DE BATERIA ×2');
+  assert.match(p, /já fez neste mesmo modelo: TROCA DE BATERIA ×2\./);
+  assert.match(p, /\(ERROU\)/);
+  assert.match(p, /TESTE = /);
 });
 
 test('medidas: polegadas, pinos, DDR e tipo de SSD', () => {
@@ -342,4 +447,33 @@ test('nomes de quem adiciona: lista primeiro, sem repetir', () => {
   const { juntarNomes } = m.exports;
   assert.deepStrictEqual(juntarNomes(['JOÃO PEDRO'], ['ana leal', 'JOAO PEDRO', '', 'GABRIEL  ANTÔNIO', 'Ana Leal', '—']),
     ['JOÃO PEDRO', 'ANA LEAL', 'GABRIEL ANTÔNIO']);
+});
+
+test('previsão: peça citada só no teste não vira defeito (casos reais de novembro/2026)', () => {
+  const p = (...obs) => preverPecas('', obs).texto;
+  assert.strictEqual(p('Defeito: NÃO LIGA, LUZ LATERAL PISCA 5 VEZES E LUZ DE CARGA APAGADA', 'Com outro carregador a luz de ligado acende, mas sem imagem na tela e no HDMI',
+    'Sem memória, bateria e SSD: luz fixa e sem imagem na tela e no HDMI'), 'PLACA-MÃE (PROVÁVEL)');
+  assert.strictEqual(p('O NOTEBOOK NÃO LIGAVA MESMO CONECTADO AO CARREGADOR, ENTÃO RETIREI O SSD (MEMÓRIA RAM É SOLDADA NA PLACA), MESMO ASSIM NÃO HOUVE RETORNO'), 'PLACA-MÃE (SUSPEITA)');
+  assert.strictEqual(p('Notebook não permanece ligado sem o carregador conectado', 'Não mexi na bateria, ela continua com defeito'), 'BATERIA (PROVÁVEL), PLACA-MÃE (SUSPEITA)');
+  assert.strictEqual(p('os defeitos de touch pad e teclado fn não estão funcionando'), 'TECLADO (CONFIRMADA), TOUCHPAD (CONFIRMADA)');
+  assert.strictEqual(p('Notebook apresenta defeito na placa de rede', 'Troquei a tela do notebook por uma com pixel morto para fazer manutenção.'), 'WI-FI (CONFIRMADA), TELA (CONFIRMADA)');
+  assert.strictEqual(p('a tela está trincada e o botão power foi retirado para outro computador'), 'TELA (CONFIRMADA), BOTÃO POWER (CONFIRMADA)');
+});
+
+test('escrita da planilha de produção e aparelho sem serial', () => {
+  const { corrigirEscrita, resumoProducao, modeloLimpo, serialInterno, serialParaProducao, completarDeIguais, linhaManutencao } = m.exports;
+  assert.strictEqual(resumoProducao('TROCA DE SDD E REPARO NA INTEFACE DE INICIALIZAÇÂO'), 'TROCA DE SSD E REPARO NA INTERFACE DE INICIALIZAÇÃO');
+  assert.strictEqual(corrigirEscrita('REPARO NO BOTAO DE MIC '), 'REPARO NO BOTÃO DE MIC');
+  assert.strictEqual(corrigirEscrita('REPARO NA INTERFACE DE ÁUDIO'), 'REPARO NA INTERFACE DE ÁUDIO');
+  assert.strictEqual(modeloLimpo(' c4128a - 14 '), 'C4128A-14');
+  assert.strictEqual(serialParaProducao(serialInterno('1111-064512')), 'N\\A');
+  assert.strictEqual(serialParaProducao('4ak30sd05'), '4AK30SD05');
+  assert.deepStrictEqual(linhaManutencao(['Y7', 'MARCA', 'SERIAL'], { 'TÉCNICO': 'Ana Leal', MARCA: 'acer', SERIAL: 'x1' }, '', null), ['ANA LEAL', 'ACER', 'X1']);
+  assert.strictEqual(m.exports.colunaTecnico(['MARCA', 'MODELO']), -1);
+  assert.strictEqual(linhaManutencao(['TÉCNICO', 'SERIAL'], { 'TÉCNICO': 'João Pedro', SERIAL: 'S/N 1111-064512' }, '', null)[1], 'N\\A');
+  assert.deepStrictEqual(completarDeIguais([
+    { EAN: 7908068807629, MODELO: 'C4128A-14', 'DESCRIÇÃO': '', MARCA: 'POSITIVO', TIPO: 'NOTEBOOK' },
+    { EAN: '7908068807629', MODELO: 'C4128A - 14', 'DESCRIÇÃO': 'PROC INTEL CELERON', MARCA: 'POSITIVO', TIPO: 'NOTEBOOK' },
+    { EAN: '', MODELO: 'A515-45', 'DESCRIÇÃO': '', MARCA: 'ACER', TIPO: 'NOTEBOOK' }
+  ], { 'A515-45': 'ACER ASPIRE 5 A515-45, 15,6"' }), [{ i: 0, campo: 'DESCRIÇÃO', valor: 'PROC INTEL CELERON' }, { i: 2, campo: 'DESCRIÇÃO', valor: 'ACER ASPIRE 5 A515-45, 15,6"' }]);
 });
