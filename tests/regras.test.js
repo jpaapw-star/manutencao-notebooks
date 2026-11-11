@@ -240,14 +240,24 @@ test('vocabulário: palavras novas e as que o João ensina na LISTAS', () => {
   assert.match(preverPecas('lente quebrada', [], ex).texto, /TELA \(CONFIRMADA\)/);
 });
 
-test('previsão da IA só entra quando as regras não acham nada', () => {
-  const { previsaoFinal, respostaPrevisao } = m.exports;
-  assert.deepStrictEqual(previsaoFinal({ texto: 'TELA (PROVÁVEL)', pecas: ['TELA'] }, ['TECLADO']).pecas, ['TELA']);
-  const f = previsaoFinal({ texto: 'DESCARTADO: TELA', pecas: [] }, ['TELA', 'FLAT']);
-  assert.strictEqual(f.texto, 'FLAT (SUSPEITA · IA) | DESCARTADO: TELA');
-  const r = respostaPrevisao('TELA = listras na imagem\n- PLACA-MÃE: "não dá sinal"\nFOGUETE = x', ['TELA', 'PLACA-MÃE']);
-  assert.deepStrictEqual(r.pecas, ['TELA', 'PLACA-MÃE']);
-  assert.deepStrictEqual(r.palavras.map(x => x.palavra), ['LISTRAS NA IMAGEM', 'NÃO DÁ SINAL']);
+test('previsão da IA vale no lugar das regras quando existe', () => {
+  const { previsaoFinal, previsaoDaIA, perguntaPrevisao, pecasDaColuna } = m.exports;
+  const regras = { texto: 'TELA (PROVÁVEL)', pecas: ['TELA'] };
+  assert.strictEqual(previsaoFinal(regras, ''), regras);
+  assert.strictEqual(previsaoFinal(regras, undefined), regras);
+  const f = previsaoFinal(regras, 'PLACA-MÃE (PROVÁVEL) | DESCARTADO: TELA');
+  assert.deepStrictEqual(f.pecas, ['PLACA-MÃE']);
+  const nomes = ['TELA', 'PLACA-MÃE', 'SSD', 'BATERIA', 'WI-FI'];
+  const r = previsaoDaIA('1. PLACA-MÃE = SUSPEITA = analisar a placa\n- **TELA** = Confirmada = "tela trincada"\nSSD: DESCARTADO: persistiu\nBATERIA = PROVÁVEL\nWI-FI = TROCADA = troquei\nFOGUETE = CONFIRMADA = x\nTELA = SUSPEITA', nomes);
+  assert.strictEqual(r.texto, 'TELA (CONFIRMADA), BATERIA (PROVÁVEL), PLACA-MÃE (SUSPEITA) | TROCADO: WI-FI | DESCARTADO: SSD');
+  assert.deepStrictEqual(r.pecas, ['TELA', 'BATERIA', 'PLACA-MÃE']);
+  assert.deepStrictEqual(pecasDaColuna(r.texto), ['TELA', 'BATERIA', 'PLACA-MÃE']);
+  assert.deepStrictEqual(r.palavras, [{ peca: 'PLACA-MÃE', palavra: 'ANALISAR A PLACA' }, { peca: 'TELA', palavra: 'TELA TRINCADA' }]);
+  assert.strictEqual(previsaoDaIA('NADA', nomes).texto, '');
+  const p = perguntaPrevisao({ TIPO: 'NOTEBOOK', MARCA: 'ACER', MODELO: 'A515-45' }, ['Defeito: NÃO LIGA', '', 'Sem imagem'], nomes, ['Trocado o SSD']);
+  assert.match(p, /Aparelho: NOTEBOOK ACER A515-45/);
+  assert.match(p, /1\. Defeito: NÃO LIGA\n2\. Sem imagem/);
+  assert.match(p, /já consertou[^\n]*\n- Trocado o SSD/);
 });
 
 test('medidas: polegadas, pinos, DDR e tipo de SSD', () => {

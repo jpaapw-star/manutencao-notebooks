@@ -111,8 +111,8 @@ function ler(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return 
 function aviso(t){ var a=$('aviso'); a.textContent=t; a.classList.add('on'); clearTimeout(aviso.t); aviso.t=setTimeout(function(){ a.classList.remove('on'); }, 3500); }
 function norm(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/O/g,'0'); }
 function sem(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase(); }
-function chamar(fn, args, ok, erro){
-  var falhou = function(e){ (erro||function(){})(e); aviso('Erro: ' + (e && e.message || e)); };
+function chamar(fn, args, ok, erro, quieto){
+  var falhou = function(e){ (erro||function(){})(e); if (!quieto) aviso('Erro: ' + (e && e.message || e)); };
   if (window.google && google.script && google.script.run) {
     var r = google.script.run.withSuccessHandler(ok).withFailureHandler(falhou);
     r[fn].apply(r, args || []);
@@ -279,7 +279,7 @@ function abrir(item){
   if (!item) h += '<label>QUEM ESTÁ ADICIONANDO?</label><div class="sits" id="quem">' + (S.listas['TÉCNICO'] || []).map(function(n){
     return '<button class="chip" type="button">' + esc(n) + '</button>'; }).join('') + '</div>';
   h += '<div class="nr">';
-  if (item && it.DEFEITO) h += '<label>DEFEITO (PREVISÃO DAS PEÇAS)</label><div class="notas combina">' + esc(String(it.DEFEITO).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">Sai do defeito e das observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
+  if (item && it.DEFEITO) h += '<label>DEFEITO (PREVISÃO DAS PEÇAS)</label><div class="notas combina">' + esc(String(it.DEFEITO).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">A IA lê o defeito e todas as observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
   if (item && (it._compradas || []).length) h += '<label>PEÇA COMPRADA QUE SERVE</label><div class="notas combina">' + esc(it._compradas.join('\n')) + '</div>';
   if (item && it['COMBINA COM']) h += '<label>COMBINA COM (MESMO MODELO)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
   h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p></div>';
@@ -367,6 +367,8 @@ function salvar(){
     aviso(r.producao ? 'Salvo. Na planilha de produção vai: ' + r.producao : r.nada ? 'Nada mudou.' : 'Salvo.');
     $('busca').value = '';
     carregar();
+    // Depois de salvar, a IA lê todas as observações do aparelho e acerta a previsão do defeito (sem segurar a tela).
+    if (S.ia && !r.nada && S.sit !== 'REPARADO') chamar('apiPrever', [item.SERIAL || ''], function(p){ if (p && p.feitas) carregar(); }, null, true);
   }, function(){ $('salvar').disabled = false; });
 }
 

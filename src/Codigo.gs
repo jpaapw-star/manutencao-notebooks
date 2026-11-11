@@ -156,6 +156,8 @@ var PREVER = [
   ['CARCAÇA', ['CARCACA', 'TAMPA', 'DOBRADICA', 'BASE QUEBRAD', 'MOLDURA', 'BEZEL', 'PALMREST', 'CHASSI'], [], []],
   ['FLAT', ['FLAT', 'CABO DE VIDEO', 'CABO FLAT', 'CABO LVDS', 'CABO EDP'], ['DEPENDENDO DO ANGULO', 'CONFORME O ANGULO', 'DEPENDE DO ANGULO', 'QUANDO MEXE A TELA', 'AO MEXER A TELA', 'AO MEXER NA TELA'], []],
   ['BOTÃO POWER', ['BOTAO POWER', 'BOTAO DE LIGAR', 'BOTAO LIGA', 'BOTAO DE POWER', 'POTAO POWER'], [], []],
+  ['ANALÓGICO', ['ANALOGICO', 'JOYSTICK', 'JOY-CON', 'JOYCON'], ['DRIFT', 'ANDA SOZINHO'], []],
+  ['GATILHO', ['GATILHO', ' R2 ', ' L2 ', ' ZR ', ' ZL '], [], []],
   ['PLACA-MÃE', ['PLACA MAE', 'PLACA-MAE', 'MOTHERBOARD', ' SER A PLACA ', 'ANALISAR A PLACA', 'CORROID', 'OXIDAD', 'MOLHAD', 'CAIU AGUA', 'CAIU LIQUIDO'], ['NAO LIGA', 'EM CURTO', 'NAO ACENDE', 'PLACA MORTA'], []]
 ];
 var P_IGNORA = /ESPERADO|SO PARA TESTE|PARA TESTAR/;
@@ -288,13 +290,72 @@ function palavrasExtras(linhas) {
   return out;
 }
 
-/** Junta a previsão das regras com a da IA (usada só quando as regras não acharam peça nenhuma). Pura. */
-function previsaoFinal(regras, pecasIA) {
-  if (regras.pecas.length || !pecasIA || !pecasIA.length) return regras;
-  var fora = pecasIA.filter(function (p) { return regras.texto.indexOf(p) < 0; });
-  if (!fora.length) return regras;
-  var t = fora.map(function (p) { return p + ' (SUSPEITA · IA)'; }).join(', ');
-  return { texto: t + (regras.texto ? ' | ' + regras.texto : ''), pecas: fora };
+/** Vale a leitura da IA quando ela existe; sem ela (ou quando ela não achou nada) ficam as regras. Pura. */
+function previsaoFinal(regras, textoIA) {
+  textoIA = String(textoIA == null ? '' : textoIA).trim();
+  if (!textoIA) return regras;
+  return { texto: textoIA, pecas: pecasDaColuna(textoIA) };
+}
+
+var ESTADOS_IA = { CONFIRMADA: 'CONFIRMADA', CONFIRMADO: 'CONFIRMADA', PROVAVEL: 'PROVÁVEL', SUSPEITA: 'SUSPEITA', TROCADA: 'TROCADA', TROCADO: 'TROCADA', DESCARTADA: 'DESCARTADA', DESCARTADO: 'DESCARTADA' };
+
+/**
+ * Pedido para a IA ler todas as anotações de um aparelho e dizer o estado de cada peça. Pura.
+ * it = aparelho; textos = anotações em ordem; nomes = peças possíveis; resolvidos = anotações de aparelhos que a oficina já consertou.
+ */
+function perguntaPrevisao(it, textos, nomes, resolvidos) {
+  it = it || {};
+  var ap = [it.TIPO, it.MARCA, it.MODELO].filter(String).join(' ') + (it['DESCRIÇÃO'] ? ' (' + it['DESCRIÇÃO'] + ')' : '');
+  var casos = (resolvidos || []).filter(String).slice(0, 6).map(function (c) { return '- ' + String(c).replace(/\s+/g, ' ').slice(0, 400); });
+  return 'Você é um técnico experiente de bancada (notebooks, consoles e controles). Leia TODAS as anotações deste aparelho, da mais antiga para a mais nova, ' +
+    'e diga como está cada peça AGORA.\n\n' +
+    'Aparelho: ' + (ap.trim() || 'não informado') + '\n' +
+    'Anotações dos técnicos:\n' + (textos || []).filter(String).map(function (t, n) { return (n + 1) + '. ' + String(t).replace(/\s+/g, ' ').trim(); }).join('\n') + '\n\n' +
+    (casos.length ? 'Aparelhos que esta oficina já consertou (só para comparar):\n' + casos.join('\n') + '\n\n' : '') +
+    'Peças possíveis (use só estes nomes): ' + nomes.join(', ') + '.\n\n' +
+    'Estados:\n' +
+    'CONFIRMADA = o texto afirma que a peça está com defeito, quebrada, faltando ou foi retirada para outro aparelho. Vale também quando puseram neste aparelho uma peça ruim.\n' +
+    'PROVÁVEL = os sintomas e os testes apontam para a peça, mas ninguém confirmou.\n' +
+    'SUSPEITA = é só uma possibilidade, falta testar.\n' +
+    'TROCADA = a peça foi trocada ou consertada e ficou boa.\n' +
+    'DESCARTADA = suspeitaram da peça, mas o teste mostrou que está boa, ou trocar não mudou nada.\n\n' +
+    'Regras:\n' +
+    '- A anotação mais nova vale mais que a antiga.\n' +
+    '- Peça citada só como parte do teste não entra ("conectado ao carregador", "usei o SSD de outro", "sem memória e bateria", "mensagem na tela").\n' +
+    '- Se o teste com peça boa não mudou o defeito, a peça é DESCARTADA e a suspeita sobe para a PLACA-MÃE.\n' +
+    '- Sem imagem na tela e também no HDMI aponta para a PLACA-MÃE, não para a TELA.\n' +
+    '- Só liga com o carregador conectado aponta para a BATERIA.\n' +
+    '- Defeito resolvido só com driver, formatação, atualização ou retirada de senha não é peça.\n' +
+    '- Defeito que o técnico diz que não confirmou não entra.\n' +
+    '- Use o que você sabe do modelo (códigos de piscadas, defeitos comuns) só para escolher entre PROVÁVEL e SUSPEITA.\n' +
+    '- Não invente: toda peça da resposta precisa de apoio no texto. No máximo 4 peças com defeito.\n\n' +
+    'Resposta: uma linha por peça, no formato PEÇA = ESTADO = trecho curto (até 5 palavras) copiado do texto. Nada além disso. ' +
+    'Se nada aponta para uma peça, responda NADA.';
+}
+
+/**
+ * Resposta da IA ("TELA = CONFIRMADA = tela trincada") no texto da coluna DEFEITO e nas palavras para as regras aprenderem. Pura.
+ */
+function previsaoDaIA(t, nomes) {
+  var est = {}, ordem = [], palavras = [];
+  String(t || '').split(/\n+/).forEach(function (l) {
+    var p = l.replace(/^\s*[-*•\d.)]*\s*/, '').replace(/\*/g, '').split(/\s*[=:|]\s*/);
+    if (p.length < 2) return;
+    var nome = semAcento_(p[0]).trim();
+    var pc = (nomes || []).filter(function (n) { return semAcento_(n) === nome; })[0];
+    var e = ESTADOS_IA[semAcento_(p[1]).trim().split(/\s+/)[0]];
+    if (!pc || !e || est[pc]) return;
+    est[pc] = e; ordem.push(pc);
+    var w = String(p[2] || '').replace(/["“”.]/g, '').trim();
+    if (NIVEL[e] && w.length >= 4 && w.split(/\s+/).length <= 5) palavras.push({ peca: pc, palavra: w.toUpperCase() });
+  });
+  var def = ordem.filter(function (pc) { return NIVEL[est[pc]]; }).sort(function (a, b) { return NIVEL[est[b]] - NIVEL[est[a]]; }).slice(0, 4);
+  var troc = ordem.filter(function (pc) { return est[pc] === 'TROCADA'; });
+  var desc = ordem.filter(function (pc) { return est[pc] === 'DESCARTADA'; });
+  var partes = [def.map(function (pc) { return pc + ' (' + est[pc] + ')'; }).join(', ')];
+  if (troc.length) partes.push('TROCADO: ' + troc.join(', '));
+  if (desc.length) partes.push('DESCARTADO: ' + desc.join(', '));
+  return { texto: partes.filter(String).join(' | '), pecas: def, palavras: palavras.filter(function (x) { return def.indexOf(x.peca) >= 0; }) };
 }
 
 /** Peças com defeito a partir do texto da coluna PEÇAS (parte antes do "|", sem o grau entre parênteses). */
@@ -784,40 +845,62 @@ function pesquisarIrmaos_(ss, limite) {
   return feitas;
 }
 
-function chavePrevisao_(defeito, textos) {
-  return 'prev:' + Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, [defeito].concat(textos).join('\n')));
+/** Chave da leitura da IA: muda quando muda o aparelho (tipo/modelo) ou qualquer anotação. */
+function chavePrevisao_(it, textos) {
+  return 'prev3:' + Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5,
+    [it.TIPO, it.MARCA, it.MODELO].concat(textos).join('\n'), Utilities.Charset.UTF_8));
+}
+
+/** Anotações juntas de aparelhos que já saíram consertados (não estão mais nas abas), os do mesmo modelo primeiro. */
+function resolvidos_(mapa, itens, it) {
+  var abertos = {};
+  itens.forEach(function (x) { abertos[normalizarSerial(chaveObs_(x))] = true; });
+  var mod = semAcento_(it.MODELO).replace(/[^A-Z0-9]/g, '');
+  var casos = [];
+  Object.keys(mapa).forEach(function (k) {
+    if (abertos[k] || mapa[k].length < 1) return;
+    var txt = mapa[k].filter(function (o) { return o.origem !== 'QUALIDADE'; }).map(function (o) { return o.texto; }).join(' / ');
+    if (txt.length < 25) return;
+    var igual = mod && semAcento_(txt).replace(/[^A-Z0-9]/g, '').indexOf(mod) >= 0;
+    casos.push({ t: txt, n: igual ? 1 : 0 });
+  });
+  return casos.sort(function (a, b) { return b.n - a.n; }).map(function (c) { return c.t; }).slice(0, 6);
 }
 
 /**
- * Quando as regras não reconhecem nenhuma peça no defeito/observações, a IA lê o texto (uma vez por texto, sem busca na internet).
- * A peça que ela achar entra como SUSPEITA · IA, e a palavra que ela usou vai para LISTAS › PALAVRAS DAS PEÇAS (as regras aprendem).
+ * A IA lê todas as anotações de cada aparelho em aberto (uma vez por texto, sem busca na internet) e diz o estado de cada peça.
+ * O resultado fica guardado e passa a valer no lugar das regras; a palavra que ela usou vai para LISTAS › PALAVRAS DAS PEÇAS (as regras aprendem).
+ * serial = aparelho que acabou de ser salvo (vai primeiro).
  */
-function preverComIA_(ss, limite) {
+function preverComIA_(ss, limite, serial) {
   var k = iaChave_();
   if (!k) return 0;
   var d = lerTudo_(ss);
   var mapa = lerObs_(ss);
   var extras = palavrasExtras(listas_(ss)['PALAVRAS DAS PEÇAS']);
   var props = PropertiesService.getScriptProperties();
+  var guardado = props.getProperties();
   var nomes = PREVER.map(function (p) { return p[0]; });
-  var feitas = 0, novas = [];
-  d.itens.forEach(function (it) {
+  var feitas = 0, novas = [], mudou = false;
+  var alvo = normalizarSerial(serial || '');
+  var itens = d.itens.slice().sort(function (a, b) {
+    return (normalizarSerial(b.SERIAL) === alvo ? 1 : 0) - (normalizarSerial(a.SERIAL) === alvo ? 1 : 0);
+  });
+  itens.forEach(function (it) {
     var sit = semAcento_(it['SITUAÇÃO']).trim();
     if (feitas >= limite || sit === 'FINALIZADO' || sit === 'SUCATA') return;
-    var textos = obsDoItem_(mapa, it).map(function (o) { return o.texto; });
-    var tudo = textos.join(' ').trim();
-    if (tudo.length < 4 || preverPecas('', textos, extras).pecas.length) return;
-    var chave = chavePrevisao_('', textos);
-    if (props.getProperty(chave) !== null) return;
-    var t = pesquisarIA_(k, 'Notebook em manutenção. Defeito e anotações dos técnicos, em ordem:\n' + textos.filter(String).join('\n') +
-      '\n\nQuais peças provavelmente estão com defeito? Use só nomes desta lista: ' + nomes.join(', ') + '.\n' +
-      'Uma linha por peça, no formato PEÇA = palavra ou trecho curto (até 4 palavras) copiado do texto que indica isso. ' +
-      'Sem texto extra. Se não der para saber, responda NADA.', []);
+    var textos = obsDoItem_(mapa, it).map(function (o) { return o.texto; }).filter(String);
+    if (textos.join(' ').trim().length < 4) return;
+    var chave = chavePrevisao_(it, textos);
+    if (guardado[chave] !== undefined) return;
+    var t = pesquisarIA_(k, perguntaPrevisao(it, textos, nomes, resolvidos_(mapa, d.itens, it)), []);
     feitas++;
     if (t === null) return;
-    var r = respostaPrevisao(t, nomes);
-    props.setProperty(chave, r.pecas.join(','));
-    r.palavras.forEach(function (x) { novas.push(x.peca + ': ' + x.palavra + ' (IA)'); });
+    var r = previsaoDaIA(t, nomes);
+    props.setProperty(chave, r.texto);
+    mudou = true;
+    var regras = preverPecas('', textos, extras).pecas;
+    r.palavras.forEach(function (x) { if (regras.indexOf(x.peca) < 0) novas.push(x.peca + ': ' + x.palavra + ' (IA)'); });
   });
   if (novas.length) {
     var ls = ss.getSheetByName('LISTAS');
@@ -830,23 +913,21 @@ function preverComIA_(ss, limite) {
         .forEach(function (x, n) { ls.getRange(ultima + 1 + n, col).setValue(x); });
     }
   }
-  if (feitas) recalcular_(ss);
+  if (mudou) {
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try { recalcular_(ss); } finally { lock.releaseLock(); }
+  }
   return feitas;
 }
 
-/** Lê "TELA = listras na imagem" da IA: peças válidas e palavras para aprender. Pura. */
-function respostaPrevisao(t, nomes) {
-  var pecas = [], palavras = [];
-  String(t || '').split(/\n+/).forEach(function (l) {
-    var m = l.match(/^\s*[-*•]?\s*([^=:]+?)\s*[=:]\s*(.*)$/);
-    var nome = m ? semAcento_(m[1]).trim() : '';
-    var pc = (nomes || []).filter(function (n) { return semAcento_(n) === nome; })[0] || (m ? tipoDaPeca(m[1]) : '');
-    if (!pc || pecas.indexOf(pc) >= 0) return;
-    pecas.push(pc);
-    var w = String(m[2] || '').replace(/["“”.]/g, '').trim();
-    if (w.length >= 4 && w.split(/\s+/).length <= 4) palavras.push({ peca: pc, palavra: w.toUpperCase() });
-  });
-  return { pecas: pecas, palavras: palavras };
+/** Chamado pela tela logo depois de salvar: a IA lê as anotações do aparelho salvo (e de mais alguns que faltam) e devolve a previsão nova. */
+function apiPrever(serial) {
+  var ss = planilha_();
+  var feitas = preverComIA_(ss, 4, serial);
+  var alvo = normalizarSerial(serial || ''), defeito = null;
+  if (feitas && alvo) lerTudo_(ss).itens.forEach(function (it) { if (normalizarSerial(it.SERIAL) === alvo) defeito = String(it[COL_DEF] || ''); });
+  return { feitas: feitas, defeito: defeito };
 }
 
 /** Pergunta curta à IA com busca do Google; devolve o texto, '' se respondeu NADA, null se não respondeu. */
@@ -1272,8 +1353,7 @@ function recalcular_(ss) {
     var obs = obsDoItem_(mapa, it);
     if (cP >= 0) {
       var textos = obs.map(function (o) { return o.texto; });
-      var ia = props[chavePrevisao_('', textos)];
-      var p = previsaoFinal(preverPecas('', textos, extras), ia ? ia.split(',').filter(String) : []).texto;
+      var p = previsaoFinal(preverPecas('', textos, extras), props[chavePrevisao_(it, textos.filter(String))]).texto;
       if (String(it[COL_DEF] || '') !== p) { it[COL_DEF] = p; aba.getRange(it._linha, cP + 1).setValue(p); }
     }
     if (cN >= 0 && obs.length) {
@@ -2032,7 +2112,7 @@ function doPost(e) {
   // Chamadas do site do app (endereço próprio no GitHub Pages): mesmas funções da tela, sem login.
   if (corpo.api) {
     var API = { apiInicio: apiInicio, apiRapido: apiRapido, apiBuscar: apiBuscar, apiPorEan: apiPorEan, apiIaLigada: apiIaLigada,
-      apiLerComIA: apiLerComIA, apiDescricaoDoModelo: apiDescricaoDoModelo, apiSalvar: apiSalvar, apiSincronizar: apiSincronizar };
+      apiLerComIA: apiLerComIA, apiDescricaoDoModelo: apiDescricaoDoModelo, apiSalvar: apiSalvar, apiSincronizar: apiSincronizar, apiPrever: apiPrever };
     if (!API[corpo.api]) return json_({ ok: false, erro: 'função desconhecida' });
     try {
       prepararPlanilha_();
@@ -2076,7 +2156,7 @@ function aplicarNota_(n) {
 /** Gatilho a cada SINCRONIZAR_HORAS: o que já passou no controle de qualidade vira FINALIZADO. */
 function sincronizarQualidade() {
   prepararPlanilha_();
-  try { pesquisarPecas_(planilha_(), 5); pesquisarIrmaos_(planilha_(), 6); preverComIA_(planilha_(), 8); } catch (x) { console.log('pesquisa de peças: ' + x); }
+  try { pesquisarPecas_(planilha_(), 5); pesquisarIrmaos_(planilha_(), 6); preverComIA_(planilha_(), 12); } catch (x) { console.log('pesquisa de peças: ' + x); }
   var q = SpreadsheetApp.openById(PLANILHAS.QUALIDADE).getSheetByName(QUALIDADE_ABA);
   if (!q) throw new Error('Aba ' + QUALIDADE_ABA + ' não encontrada no controle de qualidade.');
   var fin = seriaisFinalizados(q.getDataRange().getValues(), FINALIZA_SO_APROVADO);
@@ -2112,5 +2192,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { juntarNomes: juntarNomes, corrigirEscrita: corrigirEscrita, semContexto: semContexto, modeloLimpo: modeloLimpo, serialInterno: serialInterno, serialParaProducao: serialParaProducao, completarDeIguais: completarDeIguais, colunaTecnico: colunaTecnico, perguntaDescricao: perguntaDescricao, descricaoDaResposta: descricaoDaResposta, eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { juntarNomes: juntarNomes, corrigirEscrita: corrigirEscrita, semContexto: semContexto, modeloLimpo: modeloLimpo, serialInterno: serialInterno, serialParaProducao: serialParaProducao, completarDeIguais: completarDeIguais, colunaTecnico: colunaTecnico, perguntaDescricao: perguntaDescricao, descricaoDaResposta: descricaoDaResposta, eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, perguntaPrevisao: perguntaPrevisao, previsaoDaIA: previsaoDaIA, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }
