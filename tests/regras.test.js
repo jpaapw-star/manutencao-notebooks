@@ -317,6 +317,12 @@ test('próximo teste, lição do conserto e experiência do modelo', () => {
   assert.strictEqual(r.texto, 'BATERIA (PROVÁVEL), PLACA-MÃE (PROVÁVEL · CIRCUITO DE CARGA)');
   assert.strictEqual(r.teste, 'Testar com a bateria boa de outro NP750XGJ.');
   assert.strictEqual(previsaoDaIA('TELA = CONFIRMADA = trincada\nTESTE = NADA', nomes).teste, '');
+  assert.strictEqual(previsaoDaIA('TELA = CONFIRMADA = trincada\nTESTE = Substituir a tela por uma boa.', nomes).teste, '');
+  // A IA leu e não viu peça com defeito ("-"): das regras só fica o que foi confirmado, trocado ou descartado.
+  const { previsaoFinal } = m.exports;
+  assert.strictEqual(previsaoFinal({ texto: 'SSD (PROVÁVEL)', pecas: ['SSD'] }, '-').texto, '');
+  assert.strictEqual(previsaoFinal({ texto: 'TELA (CONFIRMADA), SSD (PROVÁVEL) | DESCARTADO: FLAT', pecas: ['TELA', 'SSD'] }, '-').texto, 'TELA (CONFIRMADA) | DESCARTADO: FLAT');
+  assert.strictEqual(previsaoFinal({ texto: 'TROCADO: ÁUDIO', pecas: [] }, '-').texto, 'TROCADO: ÁUDIO');
   assert.strictEqual(previsaoDaIA('TESTE = medir a entrada', nomes).teste, '');
   // Sem IA: teste padrão da primeira peça que ainda não está confirmada.
   assert.match(testeSugerido('TELA (CONFIRMADA), BATERIA (PROVÁVEL)'), /bateria boa/);

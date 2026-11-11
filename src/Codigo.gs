@@ -298,6 +298,14 @@ function palavrasExtras(linhas) {
 function previsaoFinal(regras, textoIA) {
   textoIA = String(textoIA == null ? '' : textoIA).trim();
   if (!textoIA) return regras;
+  // "-" = a IA leu e não viu peça com defeito: das regras só fica o que o técnico confirmou com todas as letras (e o que foi trocado/descartado).
+  if (textoIA === '-') {
+    var ps = String(regras.texto || '').split(' | ');
+    var temDef = ps.length && !/^(TROCADO|DESCARTADO):/.test(ps[0]);
+    var conf = temDef ? ps[0].split(',').map(function (x) { return x.trim(); }).filter(function (x) { return /\(CONFIRMADA\)$/.test(x); }).join(', ') : '';
+    var t0 = [conf].concat(temDef ? ps.slice(1) : ps).filter(String).join(' | ');
+    return { texto: t0, pecas: pecasDaColuna(t0) };
+  }
   var faltou = [];
   String(regras.texto || '').split('|')[0].split(',').forEach(function (x) {
     var m = x.match(/^\s*(.+?) \(CONFIRMADA\)\s*$/);
@@ -504,7 +512,8 @@ function previsaoDaIA(t, nomes, textos, lista) {
   var partes = [def.map(function (pc) { return pc + ' (' + est[pc] + (area[pc] ? ' · ' + area[pc] : '') + ')'; }).join(', ')];
   if (troc.length) partes.push('TROCADO: ' + troc.join(', '));
   if (desc.length) partes.push('DESCARTADO: ' + desc.join(', '));
-  return { texto: partes.filter(String).join(' | '), pecas: def, teste: def.length ? teste : '', palavras: palavras.filter(function (x) { return def.indexOf(x.peca) >= 0; }) };
+  // Teste só faz sentido enquanto resta dúvida (alguma peça que não está confirmada).
+  return { texto: partes.filter(String).join(' | '), pecas: def, teste: def.some(function (pc) { return est[pc] !== 'CONFIRMADA'; }) ? teste : '', palavras: palavras.filter(function (x) { return def.indexOf(x.peca) >= 0; }) };
 }
 
 /** Peças com defeito a partir do texto da coluna PEÇAS (parte antes do "|", sem o grau entre parênteses). */
@@ -1054,7 +1063,7 @@ function pesquisarIrmaos_(ss, limite) {
 
 /** Chave da leitura da IA: muda quando muda o aparelho (tipo/modelo) ou qualquer anotação. */
 function chavePrevisao_(it, textos) {
-  return 'prev5:' + Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5,
+  return 'prev6:' + Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5,
     [it.TIPO, it.MARCA, it.MODELO].concat(textos).join('\n'), Utilities.Charset.UTF_8));
 }
 
@@ -1147,7 +1156,7 @@ function preverComIA_(ss, limite, serial) {
     feitas++;
     if (t === null) return;
     var r = previsaoDaIA(t, nomes, textos, vocabulario(extras));
-    props.setProperty(chave, r.texto + (r.teste ? '\n' + r.teste : ''));   // 1ª linha = previsão; 2ª = próximo teste (só o app mostra)
+    props.setProperty(chave, (r.texto || '-') + (r.teste ? '\n' + r.teste : ''));   // 1ª linha = previsão; 2ª = próximo teste (só o app mostra)
     mudou = true;
     var regras = preverPecas('', textos, extras).pecas;
     r.palavras.forEach(function (x) { if (regras.indexOf(x.peca) < 0) novas.push(x.peca + ': ' + x.palavra + ' (IA)'); });
