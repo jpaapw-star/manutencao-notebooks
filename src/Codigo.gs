@@ -40,7 +40,7 @@ var NOTAS = 'O QUE FOI FEITO / NOTAS';
 var COL_DEF = 'DEFEITO';
 var COLUNAS_DO_APP = [COL_DEF, NOTAS, 'COMBINA COM'];
 var OBS = 'OBSERVAÇÕES';
-var VERSAO_PLANILHA = '11';
+var VERSAO_PLANILHA = '12';
 var DATAS = ['DATA ENTRADA', 'ÚLTIMA ATUALIZAÇÃO'];
 // Produtos em garantia ficam na aba GARANTIA e os de sucata na aba SUCATA (mesmas colunas), não em APARELHOS.
 var ABA_GARANTIA = 'GARANTIA';
@@ -154,19 +154,41 @@ var PREVER = [
   ['MEMÓRIA', ['MEMORIA', ' PENTE', ' RAM ', 'DDR3', 'DDR4', 'DDR5'], ['APITA', 'BIPANDO', 'BIPES', 'TELA AZUL', 'REINICIA SOZINHO'], []],
   ['COOLER', ['COOLER', 'VENTOINHA', ' FAN ', 'DISSIPADOR', 'PASTA TERMICA'], ['ESQUENTA', 'AQUECEND', 'SUPERAQUEC', 'DESLIGA SOZINHO', 'BARULHO', 'ZUMBIDO'], []],
   ['CARCAÇA', ['CARCACA', 'TAMPA', 'DOBRADICA', 'BASE QUEBRAD', 'MOLDURA', 'BEZEL', 'PALMREST', 'CHASSI'], [], []],
-  ['FLAT', ['FLAT', 'CABO DE VIDEO', 'CABO FLAT', 'CABO LVDS', 'CABO EDP'], [], []],
-  ['PLACA-MÃE', ['PLACA MAE', 'PLACA-MAE', 'MOTHERBOARD', 'CORROID', 'OXIDAD', 'MOLHAD', 'CAIU AGUA', 'CAIU LIQUIDO'], ['NAO LIGA', 'EM CURTO', 'NAO ACENDE', 'PLACA MORTA'], []]
+  ['FLAT', ['FLAT', 'CABO DE VIDEO', 'CABO FLAT', 'CABO LVDS', 'CABO EDP'], ['DEPENDENDO DO ANGULO', 'CONFORME O ANGULO', 'DEPENDE DO ANGULO', 'QUANDO MEXE A TELA', 'AO MEXER A TELA', 'AO MEXER NA TELA'], []],
+  ['BOTÃO POWER', ['BOTAO POWER', 'BOTAO DE LIGAR', 'BOTAO LIGA', 'BOTAO DE POWER', 'POTAO POWER'], [], []],
+  ['ANALÓGICO', ['ANALOGICO', 'JOYSTICK', 'JOY-CON', 'JOYCON'], ['DRIFT', 'ANDA SOZINHO'], []],
+  ['GATILHO', ['GATILHO', ' R2 ', ' L2 ', ' ZR ', ' ZL '], [], []],
+  ['PLACA-MÃE', ['PLACA MAE', 'PLACA-MAE', 'MOTHERBOARD', ' SER A PLACA ', 'ANALISAR A PLACA', 'CORROID', 'OXIDAD', 'MOLHAD', 'CAIU AGUA', 'CAIU LIQUIDO'], ['NAO LIGA', 'EM CURTO', 'NAO ACENDE', 'PLACA MORTA', 'SO LIGA NA TOMADA', 'SO FUNCIONA NA TOMADA'], []]
 ];
 var P_IGNORA = /ESPERADO|SO PARA TESTE|PARA TESTAR/;
-// Condição do teste, não peça com defeito: "não liga mesmo (conectado) ao carregador" fala do aparelho, não do carregador.
-var P_CONTEXTO = / MESMO (CONECTADO |LIGADO |PLUGADO )?(AO|NO|NA|COM O|COM A|COM) (CARREGADOR|FONTE|TOMADA) /g;
-var P_NEGA = /NAO (ESTA |ESTAVA |TA )?(FUNCION\w*|LIGA\w*|CARREG\w*|RECONHEC\w*|PEGA\w*|RESPOND\w*|ACEND\w*|ABRE|ENTRA|DA \w+)/g;
-var P_NAO_RESOLVEU = /NAO RESOLV|CONTINUA (O |COM )?(MESMO )?(DEFEITO|PROBLEMA)|MESMO DEFEITO/;
+var P_NEGA = /NAO (ESTA |ESTAO |ESTAVA |ESTAVAM |TA |TAO )?(FUNCION\w*|LIGA\w*|CARREG\w*|RECONHEC\w*|PEGA\w*|RESPOND\w*|ACEND\w*|ABRE|ENTRA|DA \w+)/g;
+var P_NAO_RESOLVEU = /NAO RESOLV|PERSISTI|PERMANECEU|NAO HOUVE RETORNO|SEM RETORNO|CONTINUA (O |COM )?(MESMO )?(DEFEITO|PROBLEMA)|MESMO DEFEITO/;
 var P_TROCA = /TROCAD|TROQUEI|SUBSTITUID|SUBSTITUI |REPARAD|REPAREI|CONSERTAD|CONSERTEI|RESOLVID|RESOLVI |ARRUMAD|ARRUMEI|REGRAVAD|REGRAVEI|REBALLING|PECA NOVA|COLOQUEI (UM|UMA|OUTR)/;
 var P_OK = / OK |FUNCION|NORMAL|SEM DEFEITO|PERFEIT|DESCARTAD|ESTA BO|ESTAO BO|TESTAD\w* BO| BOA | BOM |NAO E A |NAO E O |NAO ERA |NAO TEM DEFEITO|NAO E ESS/;
 var P_SUSPEITA = /SUSPEIT|POSSIVEL|TALVEZ|PODE SER|ACHO QUE|PARECE/;
 var P_PROVAVEL = /PROVAVE/;
-var P_CONFIRMA = /CONFIRMAD|COM DEFEITO|DEFEITUOS|QUEIMAD|ESTOURAD|CONDENAD|QUEBRAD|TRINCAD|RUIM|DANIFICAD|DEFX|NAO TEM CONSERTO|SEM CONSERTO/;
+var P_CONFIRMA = /CONFIRMAD|COM DEFEITO|DEFEITO N[AO]S? |DEFEITOS? D[EAO]S? |RETIRAD\w* PARA|FALTANDO|DEFEITUOS|QUEIMAD|ESTOURAD|CONDENAD|QUEBRAD|TRINCAD|RUIM|DANIFICAD|DEFX|NAO TEM CONSERTO|SEM CONSERTO/;
+// Peça que saiu boa e entrou uma ruim no lugar ("troquei a tela por uma com pixel morto"): a peça deste aparelho está com defeito.
+var P_PIOROU = /POR (UM|UMA|OUTR[OA]) (COM |QUEBRAD|TRINCAD|RUIM|DEFEIT|QUEIMAD)|COLOQUEI (UM|UMA) (QUEBRAD|TRINCAD|RUIM|COM DEFEITO|DEFEITUOS)/;
+// Peça citada só como parte do teste, não como defeito: "conectado ao carregador", "com outro carregador", "retirei o SSD", "indicado na tela".
+var P_CONTEXTO = [
+  [/\([^)]*\)/g, function (x) { return P_IGNORA.test(x) || /SUSPEIT|PROVAVE|CONFIRM|DEFEIT/.test(x) ? x : ' '; }],
+  [/(NAO|SO) [A-Z ]{0,30}?(SEM|FORA D[OA]|COM) (O |A )?(CARREGADOR|FONTE|TOMADA)( CONECTAD\w*| LIGAD\w*)?/g, ' SO LIGA NA TOMADA '],
+  [/SO (LIGA|FUNCIONA|FICA LIGADO|PERMANECE LIGADO) (NO|NA|COM|COM O|COM A|CONECTADO AO?|LIGADO NA?) (CARREGADOR|FONTE|TOMADA)/g, ' SO LIGA NA TOMADA '],
+  [/SEM (IMAGEM|VIDEO) (NA TELA|NO HDMI) (E|NEM) (NA TELA|NO HDMI)/g, ' PLACA MAE '],
+  [/(CONECTAD\w*|LIGAD\w*|PLUGAD\w*) (AO?|NO|NA|EM) (CARREGADOR|FONTE|TOMADA)/g, ' '],
+  [/MESMO (AO?|NO|COM O?) ?(CARREGADOR|FONTE)/g, ' '],
+  [/(COM|SEM|USEI|UTILIZEI|USANDO) (O |A |UM |UMA )?(OUTR[OA] )?(CARREGADOR|FONTE)( DE OUTR\w+( \w+)?)?( CONECTAD\w*)?/g, ' '],
+  [/(RETIREI|TIREI|REMOVI|USEI|UTILIZEI) (O |A |OS |AS |UM |UMA )?(SSD|HD|MEMORIAS?( RAM)?|BATERIA|PENTES?)( DE OUTR\w+( \w+)?)?/g, ' '],
+  [/SEM (A |O )?(MEMORIA|BATERIA|SSD|HD)( RAM)?((,| E|, E)? (A |O )?(MEMORIA|BATERIA|SSD|HD)( RAM)?)*:?/g, ' '],
+  [/(INDICAD\w*|APARECE\w*|MOSTRAD\w*|MENSAGEM|AVISO|ERRO) NA TELA/g, ' ']
+];
+/** Tira da frase as peças citadas só como parte do teste. Pura. */
+function semContexto(sentenca) {
+  var t = semAcento_(sentenca);
+  P_CONTEXTO.forEach(function (c) { t = t.replace(c[0], c[1]); });
+  return t;
+}
 var NIVEL = { 'SUSPEITA': 1, 'PROVÁVEL': 2, 'CONFIRMADA': 3 };
 
 function temSemNao_(t, w) {
@@ -183,7 +205,6 @@ function lerFrase_(frase, naoResolveu, lista) {
   var t = ' ' + semAcento_(frase).replace(/[^A-Z0-9-]+/g, ' ').trim() + ' ';
   var out = {};
   if (t.trim().length < 2 || P_IGNORA.test(t)) return out;
-  t = t.replace(P_CONTEXTO, ' ');
   var s = t.replace(P_NEGA, ' DEFX ');
   (lista || PREVER).forEach(function (p) {
     var limpo = t;
@@ -193,12 +214,15 @@ function lerFrase_(frase, naoResolveu, lista) {
     var bom = p[3].some(function (w) { return temSemNao_(t, w); });
     if (!forte && !fraco && !bom) return;
     var e, x = true;
-    if (bom || P_NAO_RESOLVEU.test(s)) e = 'OK';
+    if (forte && /NAO (MEXI|TROQUEI|FOI MEXID|FOI TROCAD)/.test(t)) e = 'PROVÁVEL';   // "não mexi na bateria": continua como estava
+    else if (bom || P_NAO_RESOLVEU.test(s)) e = 'OK';
+    else if (forte && P_PIOROU.test(s)) e = 'CONFIRMADA';
     else if (P_TROCA.test(s)) e = naoResolveu ? 'OK' : 'TROCADA';
     else if (P_OK.test(s)) e = 'OK';
     else if (P_SUSPEITA.test(s)) e = 'SUSPEITA';
     else if (P_PROVAVEL.test(s)) e = 'PROVÁVEL';
     else if (forte && P_CONFIRMA.test(s)) e = 'CONFIRMADA';
+    else if (naoResolveu && forte) { e = 'OK'; x = false; }   // peça só citada num teste que não mudou nada
     else { e = forte ? 'PROVÁVEL' : 'SUSPEITA'; x = false; }
     out[p[0]] = { estado: e, explicito: x, forte: forte };
   });
@@ -215,6 +239,7 @@ function preverPecas(defeito, textos, extras) {
   [defeito].concat(textos || []).forEach(function (txt) {
     String(txt == null ? '' : txt).split(/[.;\n!?]+/).forEach(function (sentenca) {
     var nr = P_NAO_RESOLVEU.test(' ' + semAcento_(sentenca).replace(/[^A-Z0-9-]+/g, ' ') + ' ');
+    sentenca = semContexto(sentenca);
     sentenca.split(/,| MAS | POREM | PORÉM | mas | porém | porem /).forEach(function (fr) {
       var r = lerFrase_(fr, nr, lista);
       Object.keys(r).forEach(function (pc) {
@@ -266,13 +291,229 @@ function palavrasExtras(linhas) {
   return out;
 }
 
-/** Junta a previsão das regras com a da IA (usada só quando as regras não acharam peça nenhuma). Pura. */
-function previsaoFinal(regras, pecasIA) {
-  if (regras.pecas.length || !pecasIA || !pecasIA.length) return regras;
-  var fora = pecasIA.filter(function (p) { return regras.texto.indexOf(p) < 0; });
-  if (!fora.length) return regras;
-  var t = fora.map(function (p) { return p + ' (SUSPEITA · IA)'; }).join(', ');
-  return { texto: t + (regras.texto ? ' | ' + regras.texto : ''), pecas: fora };
+/**
+ * Vale a leitura da IA quando ela existe; sem ela (ou quando ela não achou nada) ficam as regras. Pura.
+ * Peça que as regras deram como CONFIRMADA (o técnico escreveu o defeito com todas as letras) e a IA nem citou continua na previsão.
+ */
+function previsaoFinal(regras, textoIA) {
+  textoIA = String(textoIA == null ? '' : textoIA).trim();
+  if (!textoIA) return regras;
+  // "-" = a IA leu e não viu peça com defeito: das regras só fica o que o técnico confirmou com todas as letras (e o que foi trocado/descartado).
+  if (textoIA === '-') {
+    var ps = String(regras.texto || '').split(' | ');
+    var temDef = ps.length && !/^(TROCADO|DESCARTADO):/.test(ps[0]);
+    var conf = temDef ? ps[0].split(',').map(function (x) { return x.trim(); }).filter(function (x) { return /\(CONFIRMADA\)$/.test(x); }).join(', ') : '';
+    var t0 = [conf].concat(temDef ? ps.slice(1) : ps).filter(String).join(' | ');
+    return { texto: t0, pecas: pecasDaColuna(t0) };
+  }
+  var faltou = [];
+  String(regras.texto || '').split('|')[0].split(',').forEach(function (x) {
+    var m = x.match(/^\s*(.+?) \(CONFIRMADA\)\s*$/);
+    if (m && textoIA.indexOf(m[1]) < 0) faltou.push(m[1] + ' (CONFIRMADA)');
+  });
+  if (faltou.length) {
+    var partes = textoIA.split(' | ');
+    if (/^(TROCADO|DESCARTADO):/.test(partes[0])) partes.unshift(faltou.join(', '));
+    else partes[0] = faltou.concat([partes[0]]).join(', ');
+    textoIA = partes.join(' | ');
+  }
+  return { texto: textoIA, pecas: pecasDaColuna(textoIA) };
+}
+
+// Área da placa-mãe que a IA pode apontar: aparece como "PLACA-MÃE (PROVÁVEL · CIRCUITO DE CARGA)".
+var AREAS_PLACA = ['CIRCUITO DE CARGA', 'VÍDEO', 'ÁUDIO', 'USB', 'CURTO'];
+var ESTADOS_IA = { CONFIRMADA: 'CONFIRMADA', CONFIRMADO: 'CONFIRMADA', PROVAVEL: 'PROVÁVEL', SUSPEITA: 'SUSPEITA', TROCADA: 'TROCADA', TROCADO: 'TROCADA', DESCARTADA: 'DESCARTADA', DESCARTADO: 'DESCARTADA' };
+
+// Teste que tira a dúvida de cada peça, quando a IA não sugeriu um (ou está fora do ar).
+var TESTES = {
+  'TELA': 'Ligar um monitor no HDMI: se der imagem lá, o defeito é na tela ou no flat.',
+  'FLAT': 'Mexer a tela devagar e testar com outro flat.',
+  'BATERIA': 'Testar com uma bateria boa.',
+  'CARREGADOR': 'Testar com outro carregador e medir a tensão na ponta.',
+  'PLACA-MÃE': 'Ligar só a placa (sem bateria, SSD e memória) e medir a entrada de energia.',
+  'CHIP DA BIOS': 'Regravar a BIOS e ver se passa do logo.',
+  'SSD': 'Testar com outro SSD.',
+  'MEMÓRIA': 'Testar com outra memória e em outro slot.',
+  'WI-FI': 'Testar com outra placa de rede e conferir as antenas.',
+  'ÁUDIO': 'Testar com fone: se sair som no fone, o defeito é no alto-falante.',
+  'MICROFONE': 'Testar com um headset: se gravar, o defeito é no microfone interno.',
+  'TECLADO': 'Testar com um teclado USB e conferir o flat do teclado.',
+  'TOUCHPAD': 'Conferir o flat do touchpad e testar com um mouse USB.',
+  'WEBCAM': 'Conferir o flat da webcam e ver se ela aparece no Gerenciador de Dispositivos.',
+  'COOLER': 'Ver se a ventoinha gira e olhar a temperatura depois de limpar.',
+  'USB': 'Testar cada porta com um pen drive que funciona.',
+  'HDMI': 'Testar com outro cabo e outro monitor.',
+  'BOTÃO POWER': 'Fechar os contatos do botão direto na placa para ver se liga.',
+  'ANALÓGICO': 'Calibrar e testar em um site de teste de controle.',
+  'GATILHO': 'Testar o curso do gatilho em um site de teste de controle.'
+};
+
+/** Próximo teste pelo texto da coluna DEFEITO: o da primeira peça que ainda não está confirmada. '' quando não há dúvida. Pura. */
+function testeSugerido(defeito) {
+  var p = pecasComGrau(defeito).filter(function (g) { return g.grau !== 'CONFIRMADA'; })[0];
+  return p ? (TESTES[p.peca] || '') : '';
+}
+
+/** Aparelho em aberto, do mesmo modelo (ou EAN), que tem boa a peça em dúvida: serve para o teste. '' se não houver. Pura. */
+function doadorDeTeste(it, itens, defeito) {
+  var p = pecasComGrau(defeito).filter(function (g) { return g.grau !== 'CONFIRMADA' && PECAS_DA_PLACA.indexOf(g.peca) < 0; })[0];
+  var m = modeloChave_(it.MODELO), ean = String(it.EAN || '').replace(/\D/g, '');
+  if (!p || !m) return '';
+  var d = (itens || []).filter(function (b) {
+    var sit = semAcento_(b['SITUAÇÃO']).trim();
+    if (b === it || sit === 'FINALIZADO' || normalizarSerial(b.SERIAL) === normalizarSerial(it.SERIAL)) return false;
+    var igual = modeloChave_(b.MODELO) === m || (ean.length >= 8 && String(b.EAN || '').replace(/\D/g, '') === ean);
+    return igual && pecasDaColuna(b[COL_DEF]).indexOf(p.peca) < 0;
+  })[0];
+  return d ? p.peca + ' boa para o teste: ' + (String(d.SERIAL || '').trim() || 'linha ' + d._linha) : '';
+}
+
+/** Peças citadas pelo nome num texto (sem olhar se estão boas ou ruins). Pura. */
+function pecasCitadas(texto) {
+  var t = ' ' + semAcento_(texto).replace(/[^A-Z0-9-]+/g, ' ').trim() + ' ';
+  return PREVER.filter(function (p) { return p[1].some(function (w) { return t.indexOf(w) >= 0; }); }).map(function (p) { return p[0]; });
+}
+
+/**
+ * Lição de um aparelho que já foi consertado: o que os técnicos viram, o que o app previa e o que resolveu de verdade.
+ * errou = o app previa peças e nenhuma delas aparece no que resolveu. Pura.
+ */
+function licaoDoConserto(caso) {
+  var feito = String(caso.feito || '').replace(/\s+/g, ' ').trim();
+  var sintomas = (caso.sintomas || []).map(function (x) { return String(x).replace(/\s+/g, ' ').trim(); }).filter(String).join(' / ');
+  var previsto = pecasDaColuna(caso.previsto);
+  var citadas = pecasCitadas(feito);
+  var errou = previsto.length > 0 && citadas.length > 0 && !previsto.some(function (p) { return citadas.indexOf(p) >= 0; });
+  var texto = [caso.modelo ? String(caso.modelo).trim() : '', sintomas ? 'viram: ' + sintomas.slice(0, 220) : '',
+    previsto.length ? 'o app previa: ' + previsto.join(', ') + (errou ? ' (ERROU)' : '') : '', feito ? 'resolveu: ' + feito.slice(0, 160) : '']
+    .filter(String).join(' | ');
+  return { texto: texto, errou: errou };
+}
+
+/**
+ * Consertos que a oficina já fez no mesmo modelo, contados pela planilha de produção.
+ * linhas = [[marca, modelo, descrição]]. Retorna "TROCA DE TELA ×2, REPARO NO CIRCUITO DE CARGA". Pura.
+ */
+function consertosDoModelo(linhas, it) {
+  var m = modeloChave_(it && it.MODELO);
+  if (!m || m.length < 4) return '';
+  var conta = {}, ordem = [];
+  (linhas || []).forEach(function (l) {
+    var desc = corrigirEscrita(String(l[2] == null ? '' : l[2]).toUpperCase().replace(/\s+/g, ' ').trim());
+    if (!desc) return;
+    var k = modeloChave_(l[1]);
+    if (!(k === m || (k.length >= 5 && (m.indexOf(k) >= 0 || k.indexOf(m) >= 0)) || modelosCombinam(it.MODELO, l[1]))) return;
+    if (!conta[desc]) { conta[desc] = 0; ordem.push(desc); }
+    conta[desc]++;
+  });
+  return ordem.sort(function (x, y) { return conta[y] - conta[x]; }).slice(0, 8)
+    .map(function (x) { return x + (conta[x] > 1 ? ' ×' + conta[x] : ''); }).join(', ');
+}
+
+/**
+ * Pedido para a IA ler todas as anotações de um aparelho e dizer o estado de cada peça. Pura.
+ * it = aparelho; textos = anotações em ordem; nomes = peças possíveis; resolvidos = anotações de aparelhos que a oficina já consertou.
+ */
+function perguntaPrevisao(it, textos, nomes, resolvidos, experiencia) {
+  it = it || {};
+  var ap = [it.TIPO, it.MARCA, it.MODELO].filter(String).join(' ') + (it['DESCRIÇÃO'] ? ' (' + it['DESCRIÇÃO'] + ')' : '');
+  var casos = (resolvidos || []).filter(String).slice(0, 6).map(function (c) { return '- ' + String(c).replace(/\s+/g, ' ').slice(0, 520); });
+  return 'Você é um técnico experiente de bancada (notebooks, consoles e controles). Leia TODAS as anotações deste aparelho, da mais antiga para a mais nova, ' +
+    'e diga como está cada peça AGORA.\n\n' +
+    'Aparelho: ' + (ap.trim() || 'não informado') + '\n' +
+    'Anotações dos técnicos:\n' + (textos || []).filter(String).map(function (t, n) { return (n + 1) + '. ' + String(t).replace(/\s+/g, ' ').trim(); }).join('\n') + '\n\n' +
+    (experiencia ? 'Consertos que esta oficina já fez neste mesmo modelo: ' + experiencia + '.\n' +
+      'Isso é experiência: quando os sintomas combinam, pesa a favor da mesma causa. Não é prova.\n\n' : '') +
+    (casos.length ? 'Aparelhos que esta oficina já consertou. Onde está escrito ERROU, a previsão do app foi diferente do que resolveu: aprenda com isso.\n' + casos.join('\n') + '\n\n' : '') +
+    'Peças possíveis (use só estes nomes): ' + nomes.join(', ') + '.\n\n' +
+    'Estados:\n' +
+    'CONFIRMADA = o texto afirma que a peça está com defeito, quebrada, faltando ou foi retirada para outro aparelho. Vale também quando puseram neste aparelho uma peça ruim.\n' +
+    'PROVÁVEL = os sintomas e os testes apontam para a peça, mas ninguém confirmou.\n' +
+    'SUSPEITA = é só uma possibilidade, falta testar.\n' +
+    'TROCADA = a peça foi trocada ou consertada e ficou boa.\n' +
+    'DESCARTADA = suspeitaram da peça, mas o teste mostrou que está boa, ou trocar não mudou nada.\n\n' +
+    'Regras:\n' +
+    '- A anotação mais nova vale mais que a antiga.\n' +
+    '- O técnico afirma o defeito da peça ("não funciona", "quebrada", "com defeito", "não segura carga") = CONFIRMADA. Você deduziu pelo sintoma = PROVÁVEL ou SUSPEITA.\n' +
+    '- Peça citada só como parte do teste não entra: "conectado ao carregador", "usei o SSD de outro", "mensagem na tela". ' +
+    '"Sem memória, bateria e SSD" quer dizer que o teste foi feito com essas peças retiradas; elas não estão com defeito.\n' +
+    '- Se o teste com outra peça boa não mudou o defeito, a peça é DESCARTADA e a suspeita sobe para a PLACA-MÃE.\n' +
+    '- Sem imagem na tela e também no HDMI aponta para a PLACA-MÃE, não para a TELA.\n' +
+    '- Só liga ou só fica ligado com o carregador conectado: pode ser a BATERIA ou o circuito de carga da PLACA-MÃE. ' +
+    'Enquanto ninguém testou com outra bateria boa, liste as duas: BATERIA = PROVÁVEL (mesmo que o técnico diga que ela está com defeito sem ter testado) ' +
+    'e PLACA-MÃE = PROVÁVEL com a área CIRCUITO DE CARGA. Com bateria boa testada e o defeito igual, BATERIA = DESCARTADA e PLACA-MÃE sobe.\n' +
+    '- Não carrega com carregador bom também aponta para o CIRCUITO DE CARGA da PLACA-MÃE.\n' +
+    '- Os técnicos trocam peças entre aparelhos. Se a peça boa saiu daqui e entrou uma ruim ("troquei a tela por uma com pixel morto", ' +
+    '"as peças colocadas estão com defeito", "retirado para outro"), a peça DESTE aparelho é CONFIRMADA, nunca TROCADA.\n' +
+    '- TROCADA só quando a peça nova ou o conserto deixou este aparelho funcionando.\n' +
+    '- Não é peça: senha na BIOS, falta de parafusos, sujeira, driver, formatação, atualização, Windows. Se o defeito sumiu só com isso, não liste nada por causa dele.\n' +
+    '- Defeito que o técnico diz que não confirmou ou não validou não entra.\n' +
+    '- Use o que você sabe do modelo (códigos de piscadas, defeitos comuns) só para escolher entre PROVÁVEL e SUSPEITA.\n' +
+    '- Não invente: toda peça da resposta precisa de apoio no texto. No máximo 4 peças com defeito.\n\n' +
+    'Exemplos:\n' +
+    '"Não carrega. Testei com outra fonte e continuou igual." -> PLACA-MÃE = PROVÁVEL = continuou igual = CIRCUITO DE CARGA / CARREGADOR = DESCARTADA = outra fonte\n' +
+    '"Desliga quando tira da tomada" -> BATERIA = PROVÁVEL = desliga quando tira / PLACA-MÃE = PROVÁVEL = desliga quando tira = CIRCUITO DE CARGA\n' +
+    '"Sem bateria e sem HD continua sem imagem na tela e no HDMI" -> PLACA-MÃE = PROVÁVEL = sem imagem\n' +
+    '"Troquei o teclado por um com teclas falhando para usar o bom em outro" -> TECLADO = CONFIRMADA = teclas falhando\n' +
+    '"Fiz a troca da webcam e do cooler, os dois colocados estão com defeito" -> WEBCAM = CONFIRMADA = estão com defeito / COOLER = CONFIRMADA = estão com defeito\n' +
+    '"Tinha senha na BIOS, removi e ficou normal. Faltam parafusos." -> NADA\n' +
+    '"Microfone não funciona e esquenta muito" -> MICROFONE = CONFIRMADA = não funciona / COOLER = PROVÁVEL = esquenta muito\n' +
+    '"Troquei o HD e voltou a iniciar normal" -> SSD = TROCADA = troquei o HD\n\n' +
+    'Resposta só para o aparelho acima: uma linha por peça, no formato PEÇA = ESTADO = trecho curto (até 5 palavras) copiado do texto. ' +
+    'Só na PLACA-MÃE, quando der para saber, acrescente no fim a área: = CIRCUITO DE CARGA, = VÍDEO, = ÁUDIO, = USB ou = CURTO. '
+    + 'Depois das peças, uma última linha: TESTE = o próximo teste mais útil para tirar a dúvida que resta, em até 14 palavras, ' +
+    'com o que uma bancada tem (peça boa de outro aparelho, multímetro, monitor externo, fone, teclado USB). ' +
+    'Se não resta dúvida, TESTE = NADA. Nada além disso. ' +
+    'Se nada aponta para uma peça, responda NADA.';
+}
+
+/**
+ * Resposta da IA ("TELA = CONFIRMADA = tela trincada") no texto da coluna DEFEITO e nas palavras para as regras aprenderem. Pura.
+ */
+function previsaoDaIA(t, nomes, textos, lista) {
+  var est = {}, ordem = [], palavras = [], area = {}, teste = '';
+  t = String(t || '').split(/\n+/).filter(function (l) {
+    var m = l.match(/^\s*[-*•]?\s*\**TESTE\**\s*[=:]\s*(.+)$/i);
+    if (!m) return true;
+    var x = m[1].replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+    if (!/^NADA\b/i.test(x) && x.length >= 6) teste = x.charAt(0).toUpperCase() + x.slice(1, 160);
+    return false;
+  }).join('\n');
+  // Trava: peça que os técnicos só citaram como parte do teste ("sem memória, bateria e SSD") não entra como defeito, mesmo que a IA diga.
+  var cru = '', limpo = '';
+  (textos || []).forEach(function (x) {
+    String(x == null ? '' : x).split(/[.;\n!?]+/).forEach(function (fr) {
+      cru += ' ' + semAcento_(fr).replace(/[^A-Z0-9-]+/g, ' ') + ' ';
+      limpo += ' ' + semContexto(fr).replace(/[^A-Z0-9-]+/g, ' ') + ' ';
+    });
+  });
+  var soNoTeste = function (pc) {
+    var p = (lista || PREVER).filter(function (x) { return x[0] === pc; })[0];
+    if (!p || !cru.trim()) return false;
+    var ws = p[1].concat(p[2]);
+    return ws.some(function (w) { return cru.indexOf(w) >= 0; }) && !ws.some(function (w) { return limpo.indexOf(w) >= 0; });
+  };
+  String(t || '').split(/\n+/).forEach(function (l) {
+    var p = l.replace(/^\s*[-*•\d.)]*\s*/, '').replace(/\*/g, '').split(/\s*[=:|]\s*/);
+    if (p.length < 2) return;
+    var nome = semAcento_(p[0]).trim();
+    var pc = (nomes || []).filter(function (n) { return semAcento_(n) === nome; })[0];
+    var e = ESTADOS_IA[semAcento_(p[1]).trim().split(/\s+/)[0]];
+    if (!pc || !e || est[pc] || (NIVEL[e] && soNoTeste(pc))) return;
+    est[pc] = e; ordem.push(pc);
+    var ar = pc === 'PLACA-MÃE' && NIVEL[e] ? AREAS_PLACA.filter(function (a) { return semAcento_(p.slice(2).join(' ')).indexOf(semAcento_(a)) >= 0; })[0] : '';
+    if (ar) area[pc] = ar;
+    var w = String(p[2] || '').replace(/["“”.]/g, '').trim();
+    if (NIVEL[e] && w.length >= 4 && w.split(/\s+/).length <= 5) palavras.push({ peca: pc, palavra: w.toUpperCase() });
+  });
+  var def = ordem.filter(function (pc) { return NIVEL[est[pc]]; }).sort(function (a, b) { return NIVEL[est[b]] - NIVEL[est[a]]; }).slice(0, 4);
+  var troc = ordem.filter(function (pc) { return est[pc] === 'TROCADA'; });
+  var desc = ordem.filter(function (pc) { return est[pc] === 'DESCARTADA'; });
+  var partes = [def.map(function (pc) { return pc + ' (' + est[pc] + (area[pc] ? ' · ' + area[pc] : '') + ')'; }).join(', ')];
+  if (troc.length) partes.push('TROCADO: ' + troc.join(', '));
+  if (desc.length) partes.push('DESCARTADO: ' + desc.join(', '));
+  // Teste só faz sentido enquanto resta dúvida (alguma peça que não está confirmada).
+  return { texto: partes.filter(String).join(' | '), pecas: def, teste: def.some(function (pc) { return est[pc] !== 'CONFIRMADA'; }) ? teste : '', palavras: palavras.filter(function (x) { return def.indexOf(x.peca) >= 0; }) };
 }
 
 /** Peças com defeito a partir do texto da coluna PEÇAS (parte antes do "|", sem o grau entre parênteses). */
@@ -366,11 +607,44 @@ function combinacoes(itens) {
   return out;
 }
 
+// Peças que ficam na placa: não dá para "receber" de outro aparelho. Quem precisa delas não entra como montagem (vira doador das outras peças).
+var PECAS_DA_PLACA = ['PLACA-MÃE', 'CHIP DA BIOS', 'USB', 'HDMI', 'ENTRADA P2'];
+
+/** Peças com defeito da coluna DEFEITO com o grau: [{ peca, grau }]. Sem grau escrito conta como CONFIRMADA. Pura. */
+function pecasComGrau(v) {
+  var def = String(v == null ? '' : v).split('|').filter(function (x) { return !/^\s*(TROCADO|DESCARTADO)\s*:/i.test(x); })[0] || '';
+  return def.split(/[,;\/]+/).map(function (x) {
+    var m = x.match(/\(([^)]*)\)/);
+    var g = m ? semAcento_(m[1]).trim().split(/\s+/)[0] : '';
+    return { peca: x.replace(/\(.*?\)/g, '').trim().toUpperCase(), grau: g === 'SUSPEITA' ? 'SUSPEITA' : g === 'PROVAVEL' ? 'PROVÁVEL' : 'CONFIRMADA' };
+  }).filter(function (x) { return x.peca; });
+}
+
 /**
- * Notebooks fáceis de resolver: para cada aparelho em aberto, outros do MESMO modelo que, juntos,
- * têm boas todas as peças que faltam nele. Pode precisar de 2, 3 ou mais doadores.
- * Cada peça boa de um doador só é usada uma vez; quem doa não entra como aparelho a montar.
- * Começa pelos que precisam de menos peças. Retorna [{ serial, modelo, recebe: [{peca, de, sucata}] }].
+ * Modelos "parecidos": mesma marca e código quase igual (C4128E e C4128A-14, A515-45 e A515-45-R043).
+ * Costumam dividir tela, teclado, bateria e carcaça, mas o app marca para conferir o encaixe. Pura.
+ */
+function modeloParecido(modA, modB, marcaA, marcaB) {
+  if (marcaA && marcaB && semAcento_(marcaA).trim() !== semAcento_(marcaB).trim()) return false;
+  if (modelosCombinam(modA, modB)) return true;
+  var ca = codigosModelo_(modA), cb = codigosModelo_(modB);
+  return ca.some(function (x) {
+    return cb.some(function (y) {
+      var n = 0, menor = Math.min(x.length, y.length);
+      while (n < menor && x.charAt(n) === y.charAt(n)) n++;
+      return n >= 5 && n >= 0.7 * menor;
+    });
+  });
+}
+
+/**
+ * Notebooks fáceis de resolver: para cada aparelho em aberto, outros que, juntos, têm boas as peças que faltam nele.
+ * - Só conta peça CONFIRMADA ou PROVÁVEL. Peça só SUSPEITA não é trocada: aparece em "testar" (com o aparelho que tem uma boa para o teste).
+ * - Quem precisa de peça da placa (PECAS_DA_PLACA) não é montado: serve de doador.
+ * - Doador: mesmo modelo (ou mesmo EAN), peça universal, grupo da aba COMPATIBILIDADE, peça comprada, ou modelo parecido (marcado "conferir").
+ * - Cada peça boa de um doador só é usada uma vez; quem doa não entra como aparelho a montar.
+ * - Primeiro os que fecham com tudo; depois os que fecham em parte (o que sobra vai em "falta", para comprar).
+ * Retorna [{ serial, modelo, recebe: [{peca, de, sucata, comprada, outroModelo, conferir}], falta: [], testar: [{peca, de}] }].
  */
 function planosDeMontagem(itens, estoque, compat) {
   var lista = [];
@@ -378,9 +652,13 @@ function planosDeMontagem(itens, estoque, compat) {
     var sit = semAcento_(it['SITUAÇÃO']).trim();
     var m = modeloChave_(it.MODELO);
     if (sit === 'FINALIZADO' || !m) return;
-    lista.push({ i: i, m: m, t: semAcento_(it.TIPO).trim(), modelo: String(it.MODELO || '').trim(), serial: String(it.SERIAL || '').trim() || ('linha ' + it._linha),
-      aba: it._aba || '', linha: it._linha, pecas: pecasDaColuna(it[COL_DEF]), sucata: sit === 'SUCATA', usadas: {}, doou: false, montado: false,
-      medidas: medidasDoItem(it) });
+    var graus = pecasComGrau(it[COL_DEF]);
+    lista.push({ i: i, m: m, t: semAcento_(it.TIPO).trim(), modelo: String(it.MODELO || '').trim(), marca: String(it.MARCA || ''), ean: String(it.EAN || '').replace(/\D/g, ''),
+      serial: String(it.SERIAL || '').trim() || ('linha ' + it._linha), aba: it._aba || '', linha: it._linha,
+      pecas: graus.map(function (g) { return g.peca; }),
+      precisa: graus.filter(function (g) { return g.grau !== 'SUSPEITA'; }).map(function (g) { return g.peca; }),
+      suspeitas: graus.filter(function (g) { return g.grau === 'SUSPEITA'; }).map(function (g) { return g.peca; }),
+      sucata: sit === 'SUCATA', usadas: {}, doou: false, montado: false, medidas: medidasDoItem(it) });
   });
   // Peça comprada em estoque também conta como doador (só da peça dela, nos modelos em que serve).
   (estoque || []).forEach(function (e, k) {
@@ -388,37 +666,52 @@ function planosDeMontagem(itens, estoque, compat) {
     lista.push({ i: 'e' + k, estoque: true, modelos: e.modelos, oferece: [e.tipo], serial: 'PEÇA COMPRADA' + (e.codigo ? ' ' + e.codigo : ' (' + e.peca + ')'),
       pecas: [], sucata: false, usadas: {}, doou: false, montado: true, medidas: e.medidas || {} });
   });
-  var alvos = lista.filter(function (a) { return !a.estoque && !a.sucata && a.pecas.length; })
-    .sort(function (a, b) { return a.pecas.length - b.pecas.length; });
+  // 2 = serve com certeza; 1 = modelo parecido (conferir); 0 = não serve.
+  var serve = function (a, b, p) {
+    if (!medidasBatem(p, a.medidas, b.medidas)) return 0;
+    if (b.estoque) return pecaServeEstoque(p, a.modelo, b.modelos, compat) ? 2 : 0;
+    if (a.m === b.m || (a.ean.length >= 8 && a.ean === b.ean) || pecaServe(p, a.modelo, b.modelo, compat)) return 2;
+    return PECAS_DA_PLACA.indexOf(p) < 0 && modeloParecido(a.modelo, b.modelo, a.marca, b.marca) ? 1 : 0;
+  };
+  var tem = function (b, p) { return (b.oferece ? b.oferece.indexOf(p) >= 0 : b.pecas.indexOf(p) < 0) && !b.usadas[p]; };
+  var alvos = lista.filter(function (a) {
+    return !a.estoque && !a.sucata && a.precisa.length && !a.precisa.some(function (p) { return PECAS_DA_PLACA.indexOf(p) >= 0; });
+  }).sort(function (a, b) { return a.precisa.length - b.precisa.length; });
   var planos = [];
-  alvos.forEach(function (a) {
-    if (a.doou) return;
+  var montar = function (a, parcial) {
+    if (a.doou || a.montado) return;
     var doadores = lista.filter(function (b) {
       if (b.estoque) return true;
       return b !== a && !b.montado && (!a.t || !b.t || a.t === b.t);
     });
-    var serve = function (b, p) {
-      return (b.estoque ? pecaServeEstoque(p, a.modelo, b.modelos, compat) : pecaServe(p, a.modelo, b.modelo, compat)) && medidasBatem(p, a.medidas, b.medidas);
-    };
-    var falta = a.pecas.slice(), recebe = [];
+    var falta = a.precisa.slice(), recebe = [];
     while (falta.length) {
       var melhor = null, cobre = [];
       doadores.forEach(function (b) {
-        var c = falta.filter(function (p) { return (b.oferece ? b.oferece.indexOf(p) >= 0 : b.pecas.indexOf(p) < 0) && !b.usadas[p] && serve(b, p); });
+        var c = falta.filter(function (p) { return tem(b, p) && serve(a, b, p); });
         if (!c.length) return;
-        var nota = c.length * 10 + (b.estoque ? 6 : 0) + (b.sucata ? 5 : 0) + (b.m === a.m ? 3 : 0) + Math.min(b.pecas.length, 4);
+        var certo = c.every(function (p) { return serve(a, b, p) === 2; });
+        var nota = c.length * 10 + (b.estoque ? 6 : 0) + (b.sucata ? 5 : 0) + (b.m === a.m ? 3 : 0) + (certo ? 0 : -4) + Math.min(b.pecas.length, 4) +
+          (b.pecas.some(function (p) { return PECAS_DA_PLACA.indexOf(p) >= 0; }) ? 4 : 0);   // quem tem defeito na placa é o melhor doador
         if (!melhor || nota > melhor.nota) { melhor = { b: b, nota: nota }; cobre = c; }
       });
       if (!melhor) break;
       cobre.forEach(function (p) { recebe.push({ peca: p, de: melhor.b.serial, sucata: melhor.b.sucata, comprada: !!melhor.b.estoque,
-        outroModelo: !melhor.b.estoque && melhor.b.m !== a.m ? melhor.b.modelo : '', d: melhor.b }); melhor.b.usadas[p] = true; });
+        outroModelo: !melhor.b.estoque && melhor.b.m !== a.m ? melhor.b.modelo : '', conferir: serve(a, melhor.b, p) === 1, d: melhor.b }); melhor.b.usadas[p] = true; });
       falta = falta.filter(function (p) { return cobre.indexOf(p) < 0; });
     }
-    if (falta.length) { recebe.forEach(function (r) { delete r.d.usadas[r.peca]; }); return; }
+    if (!recebe.length || (falta.length && !parcial)) { recebe.forEach(function (r) { delete r.d.usadas[r.peca]; }); return; }
     a.montado = true;
     recebe.forEach(function (r) { r.d.doou = true; delete r.d; });
-    planos.push({ serial: a.serial, modelo: a.modelo, aba: a.aba, linha: a.linha, recebe: recebe });
-  });
+    // Peça só suspeita: não troca; mostra de quem pegar uma boa só para testar (sem gastar a peça do doador).
+    var testar = a.suspeitas.map(function (p) {
+      var d = doadores.filter(function (b) { return !b.estoque && b.pecas.indexOf(p) < 0 && serve(a, b, p) === 2; })[0];
+      return { peca: p, de: d ? d.serial : '' };
+    });
+    planos.push({ serial: a.serial, modelo: a.modelo, aba: a.aba, linha: a.linha, recebe: recebe, falta: falta, testar: testar });
+  };
+  alvos.forEach(function (a) { montar(a, false); });
+  alvos.forEach(function (a) { montar(a, true); });
   return planos;
 }
 
@@ -568,11 +861,38 @@ function abaPrincipal_(ss) {
 
 function letra_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
 
+/**
+ * A planilha foi criada no fuso de Los Angeles: a DATA ENTRADA aparecia um dia antes e as horas do HISTÓRICO 4-5 h atrás.
+ * Passa a planilha para o horário de Brasília e regrava as datas que já existem, para continuarem no dia e na hora certos.
+ */
+function acertarFuso_(ss) {
+  var FUSO = 'America/Sao_Paulo';
+  if (ss.getSpreadsheetTimeZone() === FUSO) return;
+  var dados = [];
+  ss.getSheets().forEach(function (a) {
+    var n = a.getLastRow() - 1, c = a.getLastColumn();
+    if (n < 1 || c < 1) return;
+    var v = a.getRange(2, 1, n, c).getValues();
+    for (var j = 0; j < c; j++) {
+      var col = v.map(function (l) { return l[j]; });
+      if (!col.some(function (x) { return x instanceof Date; })) continue;
+      // Número de série da data no horário de Brasília (o script já roda nesse fuso). null = não mexe na célula.
+      dados.push({ range: "'" + a.getName().replace(/'/g, "''") + "'!" + letra_(j + 1) + '2:' + letra_(j + 1) + (n + 1),
+        values: col.map(function (x) { return [x instanceof Date ? (x.getTime() - x.getTimezoneOffset() * 60000) / 86400000 + 25569 : null]; }) });
+    }
+  });
+  ss.setSpreadsheetTimeZone(FUSO);
+  SpreadsheetApp.flush();
+  if (dados.length) Sheets.Spreadsheets.Values.batchUpdate({ valueInputOption: 'RAW', data: dados }, ss.getId());
+  SpreadsheetApp.flush();
+}
+
 /** Deixa a planilha no formato combinado. Roda a cada abertura (rápido quando já está pronta). */
 function prepararPlanilha_() {
   var cache = CacheService.getScriptCache();
   if (cache.get('pronta') === VERSAO_PLANILHA) return;
   var ss = planilha_();
+  try { acertarFuso_(ss); } catch (x) { console.log('fuso: ' + x); }
   var aba = abaPrincipal_(ss);
   ['MEUS'].concat(ABAS_REMOVIDAS).forEach(function (nome) {
     var velha = ss.getSheetByName(nome);
@@ -681,13 +1001,19 @@ function linhasCompativeis(planos, itens) {
     var a = porSerial[p.serial] || {};
     var de = {}, ordem = [];
     p.recebe.forEach(function (r) { if (!de[r.de]) { de[r.de] = []; ordem.push(r.de); } de[r.de].push(r.peca); });
-    out.push({ grupo: g, valores: [g + 1, 'MONTAR', p.serial, p.modelo, a._aba || '', a['SITUAÇÃO'] || '', String(a[COL_DEF] || ''),
-      'Recebe ' + p.recebe.map(function (r) { return r.peca; }).join(', ') + ' de ' + ordem.length + (ordem.length === 1 ? ' doador' : ' doadores')] });
+    var falta = p.falta || [], testar = p.testar || [];
+    var conf = {};
+    p.recebe.forEach(function (r) { if (r.conferir) conf[r.de] = true; });
+    out.push({ grupo: g, valores: [g + 1, falta.length ? 'MONTAR (FALTA PEÇA)' : 'MONTAR', p.serial, p.modelo, a._aba || '', a['SITUAÇÃO'] || '', String(a[COL_DEF] || ''),
+      'Recebe ' + p.recebe.map(function (r) { return r.peca; }).join(', ') + ' de ' + ordem.length + (ordem.length === 1 ? ' doador' : ' doadores') +
+      (falta.length ? '. Falta comprar: ' + falta.join(', ') : '') +
+      (testar.length ? '. Antes, testar: ' + testar.map(function (t) { return t.peca + (t.de ? ' (com a do ' + t.de + ')' : ''); }).join(', ') : '')] });
     ordem.forEach(function (s) {
       var b = porSerial[s] || {};
       var comprada = /^PEÇA COMPRADA/.test(s);
       out.push({ grupo: g, valores: [g + 1, comprada ? 'PEÇA COMPRADA' : String(b['SITUAÇÃO'] || '').toUpperCase() === 'SUCATA' ? 'DOADOR (SUCATA)' : 'DOADOR', s, b.MODELO || (comprada ? '' : p.modelo),
-        b._aba || (comprada ? 'PEÇAS' : ''), b['SITUAÇÃO'] || (comprada ? 'EM ESTOQUE' : ''), String(b[COL_DEF] || ''), 'Dá ' + de[s].join(', ') + ' para ' + p.serial + (b.MODELO && modeloChave_(b.MODELO) !== modeloChave_(p.modelo) ? ' (outro modelo, mesma peça)' : '')] });
+        b._aba || (comprada ? 'PEÇAS' : ''), b['SITUAÇÃO'] || (comprada ? 'EM ESTOQUE' : ''), String(b[COL_DEF] || ''), 'Dá ' + de[s].join(', ') + ' para ' + p.serial +
+        (conf[s] ? ' (modelo parecido: conferir o encaixe)' : b.MODELO && modeloChave_(b.MODELO) !== modeloChave_(p.modelo) ? ' (outro modelo, mesma peça)' : '')] });
     });
   });
   return out;
@@ -735,40 +1061,105 @@ function pesquisarIrmaos_(ss, limite) {
   return feitas;
 }
 
-function chavePrevisao_(defeito, textos) {
-  return 'prev:' + Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, [defeito].concat(textos).join('\n')));
+/** Chave da leitura da IA: muda quando muda o aparelho (tipo/modelo) ou qualquer anotação. */
+function chavePrevisao_(it, textos) {
+  return 'prev6:' + Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5,
+    [it.TIPO, it.MARCA, it.MODELO].concat(textos).join('\n'), Utilities.Charset.UTF_8));
+}
+
+/** Aparelhos que saíram consertados, pelo HISTÓRICO: { serial normalizado: linha do aparelho na hora da saída }. */
+function saidas_(ss) {
+  var h = ss.getSheetByName(HISTORICO), out = {};
+  if (!h || h.getLastRow() < 2) return out;
+  h.getRange(2, 3, h.getLastRow() - 1, 3).getValues().forEach(function (l) {
+    if (String(l[1]).indexOf('SAIU (REPARADO') !== 0) return;
+    try { out[normalizarSerial(l[0])] = JSON.parse(l[2]); } catch (x) {}
+  });
+  return out;
 }
 
 /**
- * Quando as regras não reconhecem nenhuma peça no defeito/observações, a IA lê o texto (uma vez por texto, sem busca na internet).
- * A peça que ela achar entra como SUSPEITA · IA, e a palavra que ela usou vai para LISTAS › PALAVRAS DAS PEÇAS (as regras aprendem).
+ * Lições dos aparelhos que já saíram consertados (não estão mais nas abas): o que viram, o que o app previa e o que resolveu.
+ * Vêm primeiro os do mesmo modelo e depois os casos em que a previsão errou.
  */
-function preverComIA_(ss, limite) {
+function resolvidos_(mapa, itens, it, saidas) {
+  var abertos = {};
+  itens.forEach(function (x) { abertos[normalizarSerial(chaveObs_(x))] = true; });
+  var mod = modeloChave_(it.MODELO);
+  var casos = [];
+  Object.keys(mapa).forEach(function (k) {
+    if (abertos[k]) return;
+    var obs = mapa[k].filter(function (o) { return o.origem !== 'QUALIDADE'; }).map(function (o) { return o.texto; }).filter(String);
+    if (!obs.length || obs.join(' ').length < 25) return;
+    var saiu = (saidas || {})[k] || {};
+    var l = licaoDoConserto({ modelo: saiu.MODELO || '', sintomas: obs.slice(0, -1), feito: obs[obs.length - 1], previsto: saiu[COL_DEF] || '' });
+    var igual = mod.length >= 4 && (modeloChave_(saiu.MODELO) === mod || semAcento_(obs.join(' ')).replace(/[^A-Z0-9]/g, '').indexOf(mod) >= 0);
+    casos.push({ t: l.texto, n: (igual ? 2 : 0) + (l.errou ? 1 : 0) });
+  });
+  return casos.sort(function (a, b) { return b.n - a.n; }).map(function (c) { return c.t; }).slice(0, 6);
+}
+
+/** Marca, modelo e descrição dos consertos das últimas 6 abas de mês da planilha de produção (só leitura, no máximo a cada 6 h). */
+function producao_() {
+  var cache = CacheService.getScriptCache();
+  var g = cache.get('prodModelos');
+  if (g) { try { return JSON.parse(g); } catch (x) {} }
+  var out = [];
+  try {
+    var pr = SpreadsheetApp.openById(PLANILHAS.ARRUMADOS);
+    pr.getSheets().filter(function (a) { return valorMes_(a.getName()) >= 0; })
+      .sort(function (a, b) { return valorMes_(b.getName()) - valorMes_(a.getName()); }).slice(0, 6).forEach(function (a) {
+        if (a.getLastRow() < 2 || out.length >= 1200) return;
+        var cab = cabecalho_(a).map(function (h) { return semAcento_(h).trim(); });
+        var cMa = cab.indexOf('MARCA'), cMo = cab.indexOf('MODELO'), cD = cab.findIndex(function (h) { return /^(DESCRICAO|DEFEITO)$/.test(h); });
+        if (cMo < 0 || cD < 0) return;
+        a.getRange(2, 1, a.getLastRow() - 1, cab.length).getValues().forEach(function (l) {
+          if (String(l[cMo]).trim() && String(l[cD]).trim() && out.length < 1200) out.push([cMa >= 0 ? String(l[cMa]) : '', String(l[cMo]), String(l[cD]).slice(0, 80)]);
+        });
+      });
+  } catch (x) { console.log('produção: ' + x); }
+  try { cache.put('prodModelos', JSON.stringify(out), 21600); } catch (x) {}
+  return out;
+}
+
+/**
+ * A IA lê todas as anotações de cada aparelho em aberto (uma vez por texto, sem busca na internet) e diz o estado de cada peça.
+ * O resultado fica guardado e passa a valer no lugar das regras; a palavra que ela usou vai para LISTAS › PALAVRAS DAS PEÇAS (as regras aprendem).
+ * serial = aparelho que acabou de ser salvo (vai primeiro).
+ */
+function preverComIA_(ss, limite, serial) {
   var k = iaChave_();
   if (!k) return 0;
   var d = lerTudo_(ss);
   var mapa = lerObs_(ss);
   var extras = palavrasExtras(listas_(ss)['PALAVRAS DAS PEÇAS']);
   var props = PropertiesService.getScriptProperties();
+  var guardado = props.getProperties();
   var nomes = PREVER.map(function (p) { return p[0]; });
-  var feitas = 0, novas = [];
-  d.itens.forEach(function (it) {
+  var feitas = 0, novas = [], mudou = false, saidas = null, prod = [];
+  var alvo = normalizarSerial(serial || '');
+  var itens = d.itens.slice().sort(function (a, b) {
+    return (normalizarSerial(b.SERIAL) === alvo ? 1 : 0) - (normalizarSerial(a.SERIAL) === alvo ? 1 : 0);
+  });
+  itens.forEach(function (it) {
     var sit = semAcento_(it['SITUAÇÃO']).trim();
     if (feitas >= limite || sit === 'FINALIZADO' || sit === 'SUCATA') return;
-    var textos = obsDoItem_(mapa, it).map(function (o) { return o.texto; });
-    var tudo = textos.join(' ').trim();
-    if (tudo.length < 4 || preverPecas('', textos, extras).pecas.length) return;
-    var chave = chavePrevisao_('', textos);
-    if (props.getProperty(chave) !== null) return;
-    var t = pesquisarIA_(k, 'Notebook em manutenção. Defeito e anotações dos técnicos, em ordem:\n' + textos.filter(String).join('\n') +
-      '\n\nQuais peças provavelmente estão com defeito? Use só nomes desta lista: ' + nomes.join(', ') + '.\n' +
-      'Uma linha por peça, no formato PEÇA = palavra ou trecho curto (até 4 palavras) copiado do texto que indica isso. ' +
-      'Sem texto extra. Se não der para saber, responda NADA.', []);
+    var textos = obsDoItem_(mapa, it).map(function (o) { return o.texto; }).filter(String);
+    if (textos.join(' ').trim().length < 4) return;
+    var chave = chavePrevisao_(it, textos);
+    if (guardado[chave] !== undefined) return;
+    // Com raciocínio a IA acerta mais (medido nos casos reais); se nenhum modelo responder assim, tenta sem.
+    if (saidas === null) { saidas = saidas_(ss); prod = producao_(); }
+    var pergunta = perguntaPrevisao(it, textos, nomes, resolvidos_(mapa, d.itens, it, saidas), consertosDoModelo(prod, it));
+    var t = pesquisarIA_(k, pergunta, [], 'high');
+    if (t === null) t = pesquisarIA_(k, pergunta, []);
     feitas++;
     if (t === null) return;
-    var r = respostaPrevisao(t, nomes);
-    props.setProperty(chave, r.pecas.join(','));
-    r.palavras.forEach(function (x) { novas.push(x.peca + ': ' + x.palavra + ' (IA)'); });
+    var r = previsaoDaIA(t, nomes, textos, vocabulario(extras));
+    props.setProperty(chave, (r.texto || '-') + (r.teste ? '\n' + r.teste : ''));   // 1ª linha = previsão; 2ª = próximo teste (só o app mostra)
+    mudou = true;
+    var regras = preverPecas('', textos, extras).pecas;
+    r.palavras.forEach(function (x) { if (regras.indexOf(x.peca) < 0) novas.push(x.peca + ': ' + x.palavra + ' (IA)'); });
   });
   if (novas.length) {
     var ls = ss.getSheetByName('LISTAS');
@@ -781,34 +1172,33 @@ function preverComIA_(ss, limite) {
         .forEach(function (x, n) { ls.getRange(ultima + 1 + n, col).setValue(x); });
     }
   }
-  if (feitas) recalcular_(ss);
+  if (mudou) {
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try { recalcular_(ss); } finally { lock.releaseLock(); }
+  }
   return feitas;
 }
 
-/** Lê "TELA = listras na imagem" da IA: peças válidas e palavras para aprender. Pura. */
-function respostaPrevisao(t, nomes) {
-  var pecas = [], palavras = [];
-  String(t || '').split(/\n+/).forEach(function (l) {
-    var m = l.match(/^\s*[-*•]?\s*([^=:]+?)\s*[=:]\s*(.*)$/);
-    var nome = m ? semAcento_(m[1]).trim() : '';
-    var pc = (nomes || []).filter(function (n) { return semAcento_(n) === nome; })[0] || (m ? tipoDaPeca(m[1]) : '');
-    if (!pc || pecas.indexOf(pc) >= 0) return;
-    pecas.push(pc);
-    var w = String(m[2] || '').replace(/["“”.]/g, '').trim();
-    if (w.length >= 4 && w.split(/\s+/).length <= 4) palavras.push({ peca: pc, palavra: w.toUpperCase() });
-  });
-  return { pecas: pecas, palavras: palavras };
+/** Chamado pela tela logo depois de salvar: a IA lê as anotações do aparelho salvo (e de mais alguns que faltam) e devolve a previsão nova. */
+function apiPrever(serial) {
+  var ss = planilha_();
+  var feitas = preverComIA_(ss, 2, serial);
+  var alvo = normalizarSerial(serial || ''), defeito = null;
+  if (feitas && alvo) lerTudo_(ss).itens.forEach(function (it) { if (normalizarSerial(it.SERIAL) === alvo) defeito = String(it[COL_DEF] || ''); });
+  return { feitas: feitas, defeito: defeito };
 }
 
 /** Pergunta curta à IA com busca do Google; devolve o texto, '' se respondeu NADA, null se não respondeu. */
-function pesquisarIA_(k, pergunta, ferramentas) {
+function pesquisarIA_(k, pergunta, ferramentas, pensar) {
   if (!ferramentas) ferramentas = [{ google_search: {} }];
   for (var i = 0; i < IA_MODELOS.length; i++) {
     var r;
     try {
       r = UrlFetchApp.fetch(IA_URL + IA_MODELOS[i] + ':generateContent?key=' + encodeURIComponent(k), {
         method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-        payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: pergunta }] }], tools: ferramentas.length ? ferramentas : undefined, generationConfig: { temperature: 0 } })
+        payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: pergunta }] }], tools: ferramentas.length ? ferramentas : undefined,
+          generationConfig: pensar ? { temperature: 0, thinkingConfig: { thinkingLevel: pensar } } : { temperature: 0 } })
       });
     } catch (x) { continue; }
     if (r.getResponseCode() !== 200) continue;
@@ -872,7 +1262,7 @@ function escreverCompativeis_(ss, itens, est, compat) {
     }));
     aba.getRange(2, 2, linhas.length, 1).setFontWeight('bold');
   } else {
-    aba.getRange(2, 1).setValue('Nenhum notebook pode ser montado com peças de outros do mesmo modelo agora.');
+    aba.getRange(2, 1).setValue('Nenhum aparelho pode ser montado com peças de outros agora.');
   }
   cache.put('compat', Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, assinatura)), 21600);
 }
@@ -1209,13 +1599,21 @@ function recalcular_(ss) {
     abas[a.getName()] = a;
     notas[a.getName()] = cN >= 0 && a.getLastRow() > 1 ? a.getRange(2, cN + 1, a.getLastRow() - 1, 1).getNotes() : [];
   });
+  // Descrição, marca e tipo vazios: copia de outro aparelho igual (mesmo EAN ou modelo) ou da descrição já pesquisada do modelo.
+  var descricoes = {};
+  Object.keys(props).forEach(function (k) { if (k.indexOf('desc:') === 0 && props[k]) descricoes[k.slice(5)] = props[k]; });
+  completarDeIguais(d.itens, descricoes).forEach(function (x) {
+    var it = d.itens[x.i], j = d.cab.indexOf(x.campo);
+    if (j < 0) return;
+    it[x.campo] = x.valor;
+    abas[it._aba].getRange(it._linha, j + 1).setValue(x.valor);
+  });
   d.itens.forEach(function (it) {
     var aba = abas[it._aba];
     var obs = obsDoItem_(mapa, it);
     if (cP >= 0) {
       var textos = obs.map(function (o) { return o.texto; });
-      var ia = props[chavePrevisao_('', textos)];
-      var p = previsaoFinal(preverPecas('', textos, extras), ia ? ia.split(',').filter(String) : []).texto;
+      var p = previsaoFinal(preverPecas('', textos, extras), String(props[chavePrevisao_(it, textos.filter(String))] || '').split('\n')[0]).texto;
       if (String(it[COL_DEF] || '') !== p) { it[COL_DEF] = p; aba.getRange(it._linha, cP + 1).setValue(p); }
     }
     if (cN >= 0 && obs.length) {
@@ -1313,7 +1711,7 @@ function resumoProducao(texto) {
   var t = String(texto == null ? '' : texto).replace(/\s+/g, ' ').trim().toUpperCase().replace(/[.;]+$/, '');
   if (!t) return '';
   var u = semAcento_(t);
-  if (R_ESTILO.test(u) && t.length <= 80 && !/[.;!?]\s/.test(t) && !/\b(EU|FOI|FORAM|ESTAVA|APRESENTAVA|TROQUEI|FIZ)\b/.test(u)) return t;
+  if (R_ESTILO.test(u) && t.length <= 80 && !/[.;!?]\s/.test(t) && !/\b(EU|FOI|FORAM|ESTAVA|APRESENTAVA|TROQUEI|FIZ)\b/.test(u)) return corrigirEscrita(t);
   var trocas = [], areas = [], formatou = R_FORMATA.test(u), anterior = [];
   u.split(/[.;!?\n]+|,| E | MAS | POREM | DEPOIS /).forEach(function (fr) {
     fr = ' ' + fr.replace(/[^A-Z0-9-]+/g, ' ').trim() + ' ';
@@ -1347,6 +1745,19 @@ function resumoProducao(texto) {
   return partes.length > 2 ? partes.slice(0, -1).join(', ') + ' E ' + partes[partes.length - 1] : partes.join(' E ');
 }
 
+// Erros de digitação comuns na coluna DESCRIÇÃO da planilha de produção (vistos em novembro/2026).
+var ESCRITA = [[/\bINTEFACE\b/g, 'INTERFACE'], [/\bSDD\b/g, 'SSD'], [/\bAUDIO\b/g, 'ÁUDIO'], [/\bVIDEO\b/g, 'VÍDEO'], [/\bINICIALIZA(ÇÂO|CAO|ÇAO|CÃO)\b/g, 'INICIALIZAÇÃO'],
+  [/\bFORMATA(ÇÂO|CAO|ÇAO|CÃO)\b/g, 'FORMATAÇÃO'], [/\bENERGETICO\b/g, 'ENERGÉTICO'], [/\bBOTAO\b/g, 'BOTÃO'], [/\bCONEXAO\b/g, 'CONEXÃO'], [/\bMEMORIA\b/g, 'MEMÓRIA'],
+  [/\bCARCACA\b/g, 'CARCAÇA'], [/\bTRIANGULO\b/g, 'TRIÂNGULO'], [/\bCONTROLER\b/g, 'CONTROLLER']];
+/** Conserta os erros de digitação comuns sem mudar o resto do texto. Pura. */
+function corrigirEscrita(t) {
+  t = String(t == null ? '' : t);
+  // \b do JavaScript não entende letras com acento: compara com espaços nas pontas.
+  var x = ' ' + t.replace(/\s+/g, ' ').trim() + ' ';
+  ESCRITA.forEach(function (e) { x = x.replace(new RegExp('([ ,])' + e[0].source.replace(/\\b/g, '') + '(?=[ ,])', 'g'), '$1' + e[1]); });
+  return x.trim();
+}
+
 // Exemplos reais da coluna DESCRIÇÃO (planilha MANUTENÇÕES INFORMATICA GERAL), para a IA copiar o jeito.
 var EXEMPLOS_PRODUCAO = ['REPARO NA INTERFACE DE ÁUDIO', 'TROCA DE TELA', 'TROCA DE SSD E PLACA DE REDE', 'REPARO NA INTERFACE DE VÍDEO, REDE E ÁUDIO',
   'FORMATAÇÃO DO SISTEMA E REPARO NA INTERFACE DE REDE', 'REPARO NA INTERFACE DE INICIALIZAÇÃO E FORMATAÇÃO DO SISTEMA', 'TROCA DE BATERIA',
@@ -1367,14 +1778,68 @@ function resumirProducao_(texto) {
   return resumoObs(String(texto).toUpperCase(), 80).replace(/…$/, '');
 }
 
+/** Modelo sempre do mesmo jeito: maiúsculas, um espaço só, sem espaço em volta do hífen ("C4128A - 14" = "C4128A-14"). Pura. */
+function modeloLimpo(m) {
+  return String(m == null ? '' : m).toUpperCase().replace(/\s+/g, ' ').replace(/\s*-\s*/g, '-').trim();
+}
+
+/** Aparelho sem serial (controle, acessório): ganha um código só dele, para as observações e a produção não se misturarem. Pura. */
+function serialInterno(carimbo) { return 'S/N ' + carimbo; }
+
+/** Na planilha de produção o aparelho sem serial aparece como o João escreve: N\A. Pura. */
+function serialParaProducao(serial) {
+  var t = String(serial == null ? '' : serial).trim().toUpperCase();
+  return !t || /^S\/N /.test(t) ? 'N\\A' : t;
+}
+
+/**
+ * Campos vazios que outro aparelho igual já tem: mesmo EAN primeiro, depois mesmo modelo. descricoes = { MODELO: descrição pesquisada }.
+ * Retorna [{ i, campo, valor }] (i = posição na lista). Pura.
+ */
+function completarDeIguais(itens, descricoes) {
+  var porEan = {}, porModelo = {}, CAMPOS_IGUAIS = ['DESCRIÇÃO', 'MARCA', 'TIPO', 'MODELO'];
+  var ean = function (it) { return String(it.EAN == null ? '' : it.EAN).replace(/\D/g, ''); };
+  itens.forEach(function (it) {
+    CAMPOS_IGUAIS.forEach(function (c) {
+      var v = String(it[c] == null ? '' : it[c]).trim();
+      if (!v) return;
+      var e = ean(it), m = modeloLimpo(it.MODELO);
+      if (e.length >= 8) { porEan[e] = porEan[e] || {}; if (!porEan[e][c]) porEan[e][c] = v; }
+      if (m && c !== 'MODELO') { porModelo[m] = porModelo[m] || {}; if (!porModelo[m][c]) porModelo[m][c] = v; }
+    });
+  });
+  var out = [];
+  itens.forEach(function (it, i) {
+    CAMPOS_IGUAIS.forEach(function (c) {
+      if (String(it[c] == null ? '' : it[c]).trim()) return;
+      var e = ean(it), m = modeloLimpo(it.MODELO);
+      var v = (porEan[e] || {})[c] || (c !== 'MODELO' && (porModelo[m] || {})[c]) || (c === 'DESCRIÇÃO' && m && (descricoes || {})[m]) || '';
+      if (v) out.push({ i: i, campo: c, valor: v });
+    });
+  });
+  return out;
+}
+
+/**
+ * Coluna do técnico na planilha de produção. Se alguém escreveu por cima do título (em novembro/2026 a A1 virou "Y7"),
+ * vale a primeira coluna, desde que ela não seja outra coluna conhecida. -1 se não houver. Pura.
+ */
+function colunaTecnico(cab) {
+  var ks = (cab || []).map(function (h) { return semAcento_(h).trim(); });
+  var j = ks.findIndex(function (k) { return /^TECNICO/.test(k); });
+  if (j >= 0) return j;
+  return ks.length && !/^(MARCA|MODELO|SERIAL|SERIE|DATA|DESCRICAO|DEFEITO|ESTADO|ENTREGUE|TIPO)$/.test(ks[0]) ? 0 : -1;
+}
+
 /** Linha da planilha de manutenções na ordem do cabeçalho daquela aba (nomes de coluna variam de mês para mês). Pura. */
 function linhaManutencao(cab, it, descricao, data) {
-  return cab.map(function (h) {
+  var cT = colunaTecnico(cab);
+  return cab.map(function (h, j) {
     var k = semAcento_(h).trim();
-    if (/^TECNICO/.test(k)) return String(it['TÉCNICO'] || '').toUpperCase();
+    if (j === cT) return String(it['TÉCNICO'] || '').toUpperCase();
     if (k === 'MARCA') return String(it.MARCA || '').toUpperCase();
     if (k === 'MODELO') return String(it.MODELO || '').toUpperCase();
-    if (/^(SERIAL|SERIE)$/.test(k)) return String(it.SERIAL || '').toUpperCase();
+    if (/^(SERIAL|SERIE)$/.test(k)) return serialParaProducao(it.SERIAL);
     if (k === 'DATA') return data;
     if (/^(DESCRICAO|DEFEITO)$/.test(k)) return descricao;
     return '';
@@ -1531,10 +1996,17 @@ function apiInicio() {
   var d = lerTudo_(ss);
   var itens = itensDaTela_(d.itens);
   var mapa = lerObs_(ss);
+  var guardado = PropertiesService.getScriptProperties().getProperties();
   itens.forEach(function (it) {
     var o = obsDoItem_(mapa, it);
     it._obs = obsParaTela_(o);
     it._sugestao = descricaoReparo(it[COL_DEF], o.map(function (x) { return x.texto; }), '');
+    // Próximo teste: o que a IA sugeriu para estas anotações; sem ela, o teste padrão da peça em dúvida. Só no app, não vai para a planilha.
+    var sit = semAcento_(it['SITUAÇÃO']).trim();
+    if (ENCERRADAS.indexOf(sit) < 0 && ARRUMADO.indexOf(sit) < 0 && pecasComGrau(it[COL_DEF]).length) {
+      var g = String(guardado[chavePrevisao_(it, o.map(function (x) { return x.texto; }).filter(String))] || '').split('\n');
+      it._teste = [g[1] || testeSugerido(it[COL_DEF]), doadorDeTeste(it, d.itens, it[COL_DEF])].filter(String).join('\n');
+    }
   });
   var est = lerEstoque_(ss), compat = lerCompat_(ss);
   var montagens = planosDeMontagem(d.itens, est, compat);
@@ -1589,7 +2061,7 @@ function tecnicos_(ss, daLista, itens) {
       var meses = pr.getSheets().filter(function (a) { return valorMes_(a.getName()) >= 0; })
         .sort(function (a, b) { return valorMes_(b.getName()) - valorMes_(a.getName()); }).slice(0, 3);
       meses.forEach(function (a) {
-        var cab = cabecalho_(a), j = cab.map(semAcento_).indexOf('TECNICO');
+        var cab = cabecalho_(a), j = colunaTecnico(cab);
         if (j < 0 || a.getLastRow() < 2) return;
         a.getRange(2, j + 1, a.getLastRow() - 1, 1).getValues().forEach(function (l) { out.push(String(l[0])); });
       });
@@ -1740,7 +2212,7 @@ function apiLerComIA(base64, jaLido) {
  * armazenamento, placa de vídeo e tela, pesquisado com a busca do Google. Uma pesquisa por modelo (guardada).
  */
 function apiDescricaoDoModelo(marca, modelo) {
-  var mod = String(modelo || '').toUpperCase().trim();
+  var mod = modeloLimpo(modelo);
   if (mod.length < 4) return '';
   var props = PropertiesService.getScriptProperties();
   var chave = 'desc:' + mod.slice(0, 80);
@@ -1804,6 +2276,12 @@ function apiSalvar(item, tecnico) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
+    var agora = new Date();
+    // Nomes e modelos sempre do mesmo jeito (a busca, as combinações e a planilha de produção dependem disso).
+    tecnico = String(tecnico || '').trim().toUpperCase();
+    ['TÉCNICO', 'MARCA', 'TIPO'].forEach(function (c) { if (typeof item[c] === 'string') item[c] = item[c].trim().toUpperCase(); });
+    if (typeof item.MODELO === 'string') item.MODELO = modeloLimpo(item.MODELO);
+    if (!item._linha && !String(item.SERIAL || '').trim()) item.SERIAL = serialInterno(Utilities.formatDate(agora, 'America/Sao_Paulo', 'ddMM-HHmmss'));
     // O que foi feito, escrito ao marcar REPARADO: vira a DESCRIÇÃO na planilha de produção.
     var sn0 = normalizarSerial(item.SERIAL || item._serial);
     var producao = item._producao ? resumirProducao_(item._producao) : '';
@@ -1811,7 +2289,6 @@ function apiSalvar(item, tecnico) {
     var ss = planilha_();
     var aba = abaDe_(ss, item._linha ? item._aba : ABA);
     var cab = cabecalho_(aba);
-    var agora = new Date();
     var paraCelula = function (h, v) {
       if (DATAS.indexOf(h) >= 0 && typeof v === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
         var p = v.split('/'); return new Date(+p[2], +p[1] - 1, +p[0]);
@@ -1932,7 +2409,7 @@ function doPost(e) {
   // Chamadas do site do app (endereço próprio no GitHub Pages): mesmas funções da tela, sem login.
   if (corpo.api) {
     var API = { apiInicio: apiInicio, apiRapido: apiRapido, apiBuscar: apiBuscar, apiPorEan: apiPorEan, apiIaLigada: apiIaLigada,
-      apiLerComIA: apiLerComIA, apiDescricaoDoModelo: apiDescricaoDoModelo, apiSalvar: apiSalvar, apiSincronizar: apiSincronizar };
+      apiLerComIA: apiLerComIA, apiDescricaoDoModelo: apiDescricaoDoModelo, apiSalvar: apiSalvar, apiSincronizar: apiSincronizar, apiPrever: apiPrever };
     if (!API[corpo.api]) return json_({ ok: false, erro: 'função desconhecida' });
     try {
       prepararPlanilha_();
@@ -2012,5 +2489,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { ultimaPreenchida: ultimaPreenchida, juntarNomes: juntarNomes, perguntaDescricao: perguntaDescricao, descricaoDaResposta: descricaoDaResposta, eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, respostaPrevisao: respostaPrevisao, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar, seriaisDosMeses_: seriaisDosMeses_ };
+  module.exports = { ultimaPreenchida: ultimaPreenchida, seriaisDosMeses_: seriaisDosMeses_, juntarNomes: juntarNomes, corrigirEscrita: corrigirEscrita, semContexto: semContexto, modeloLimpo: modeloLimpo, serialInterno: serialInterno, serialParaProducao: serialParaProducao, completarDeIguais: completarDeIguais, colunaTecnico: colunaTecnico, perguntaDescricao: perguntaDescricao, descricaoDaResposta: descricaoDaResposta, eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, pecasComGrau: pecasComGrau, testeSugerido: testeSugerido, doadorDeTeste: doadorDeTeste, pecasCitadas: pecasCitadas, licaoDoConserto: licaoDoConserto, consertosDoModelo: consertosDoModelo, modeloParecido: modeloParecido, perguntaPrevisao: perguntaPrevisao, previsaoDaIA: previsaoDaIA, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }

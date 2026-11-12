@@ -27,13 +27,14 @@ jobs:
         with:
           node-version: 22
       - run: npm test
-      - name: Medir a IA nas fotos de etiqueta
+      - name: Medir a previsão do defeito pela IA
         if: github.ref != 'refs/heads/main'
         continue-on-error: true
+        timeout-minutes: 12
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SO_DESCRICAO: '1'
-        run: node scripts/medir-ia.js | tee -a "$GITHUB_STEP_SUMMARY"
+          MODELOS: 'gemini-3.1-flash-lite-preview@high'
+        run: node scripts/medir-previsao.js | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Conferir se o app abre sem login
         # A busca de hora em hora das anotações não precisa disso (e não gasta a cota da IA)
         if: github.event_name != 'schedule'

@@ -40,6 +40,7 @@
   .flutua { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(20px + env(safe-area-inset-bottom)); box-shadow:0 6px 24px rgba(0,0,0,.25); }
   .painel { position:fixed; inset:0; background:var(--fundo); overflow-y:auto; display:none; z-index:5; }
   .painel.on { display:block; }
+  #pQuem { z-index:6; }
   .topo { display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--fundo); padding:12px 16px; border-bottom:1px solid var(--linha); z-index:2; }
   .topo button { background:none; border:0; color:var(--texto); font:inherit; font-size:17px; padding:4px; }
   .topo .ok { font-weight:700; }
@@ -110,8 +111,8 @@ function ler(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return 
 function aviso(t){ var a=$('aviso'); a.textContent=t; a.classList.add('on'); clearTimeout(aviso.t); aviso.t=setTimeout(function(){ a.classList.remove('on'); }, 3500); }
 function norm(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/O/g,'0'); }
 function sem(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase(); }
-function chamar(fn, args, ok, erro){
-  var falhou = function(e){ (erro||function(){})(e); aviso('Erro: ' + (e && e.message || e)); };
+function chamar(fn, args, ok, erro, quieto){
+  var falhou = function(e){ (erro||function(){})(e); if (!quieto) aviso('Erro: ' + (e && e.message || e)); };
   if (window.google && google.script && google.script.run) {
     var r = google.script.run.withSuccessHandler(ok).withFailureHandler(falhou);
     r[fn].apply(r, args || []);
@@ -159,7 +160,7 @@ function aplicarModo(){
   $('lNota').textContent = rep ? 'O QUE FOI FEITO (VAI PARA A PLANILHA DE PRODUÇÃO)' : S.atual ? 'NOVA OBSERVAÇÃO' : 'DEFEITO';
   $('f_nota').placeholder = rep ? 'Escreva do seu jeito. Na planilha vai só o resumo, ex.: TROCA DE TELA E REPARO NA INTERFACE DE ÁUDIO' : S.atual ? 'O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok' : 'O defeito que apareceu. Toque abaixo ou dite pelo microfone';
   if (rep && !$('f_nota').value.trim() && S.atual && S.atual._sugestao) $('f_nota').value = S.atual._sugestao;
-  if (rep && !valorCampo('TÉCNICO') && S.tecnico) porCampo('TÉCNICO', S.tecnico);
+  if (rep && S.atual && !valorCampo('TÉCNICO') && S.tecnico) porCampo('TÉCNICO', S.tecnico);
 }
 
 // Chave de busca feita uma vez por aparelho: a busca a cada letra só compara texto pronto.
@@ -202,7 +203,7 @@ function desenhar(){
     var t = [i.MARCA, i.MODELO].filter(Boolean).join(' ') || i['DESCRIÇÃO'] || i.TIPO || 'Aparelho';
     var l2 = [i['SITUAÇÃO'], String(i.DEFEITO || '').split('|')[0].trim(), i['TÉCNICO']].filter(Boolean).join(' · ');
     if (i['COMBINA COM']) l2 += ' · ⇄ combina com ' + String(i['COMBINA COM']).split('\n').length;
-    return '<button class="item" data-l="' + esc(i._aba + ':' + i._linha) + '"><b>' + esc(t) + '</b> <span style="color:var(--fraco)">' + esc(i.SERIAL||'') + '</span><div class="l2">' + esc(l2) + '</div></button>';
+    return '<button class="item" data-l="' + esc(i._aba + ':' + i._linha) + '"><b>' + esc(t) + '</b> <span style="color:var(--fraco)">' + esc(/^S\/N /.test(i.SERIAL||'') ? 'sem serial' : (i.SERIAL||'')) + '</span><div class="l2">' + esc(l2) + '</div></button>';
   }).join('') : '<div class="vazio">' + (q ? (S.procurando ? 'Procurando na planilha toda…' : 'Nada encontrado. Toque em "Novo aparelho" para cadastrar.') : 'Nenhum aparelho aqui.') + '</div>')
     + (mais ? '<button class="chip" id="mais" style="width:100%;margin-top:8px">Mostrar mais (' + (total - S.mostrar) + ')</button>' : '');
   if (mais) $('mais').onclick = function(){ S.mostrar += MOSTRAR; desenhar(); };
@@ -235,7 +236,10 @@ function mostrarMontagens(){
   $('montagens').innerHTML = S.montagens.map(function(m){
     var de = {};
     m.recebe.forEach(function(r){ (de[r.de] = de[r.de] || { sucata: r.sucata, outro: r.outroModelo, pecas: [] }).pecas.push(r.peca); });
-    var l2 = Object.keys(de).map(function(s){ return de[s].pecas.join(', ') + ' ← ' + s + (de[s].sucata ? ' (sucata)' : '') + (de[s].outro ? ' · ' + de[s].outro : ''); }).join('\n');
+    m.recebe.forEach(function(r){ if (r.conferir) de[r.de].conferir = true; });
+    var l2 = Object.keys(de).map(function(s){ return de[s].pecas.join(', ') + ' ← ' + s + (de[s].sucata ? ' (sucata)' : '') + (de[s].outro ? ' · ' + de[s].outro : '') + (de[s].conferir ? ' · modelo parecido, conferir o encaixe' : ''); }).join('\n');
+    if ((m.falta || []).length) l2 += '\nFalta comprar: ' + m.falta.join(', ');
+    if ((m.testar || []).length) l2 += '\nAntes, testar: ' + m.testar.map(function(t){ return t.peca + (t.de ? ' (com a do ' + t.de + ')' : ''); }).join(', ');
     var n = Object.keys(de).length;
     return '<div class="monta" style="border-left:6px solid ' + esc(m.cor || 'transparent') + ';padding-left:12px"><button data-l="' + esc(m.aba + ':' + m.linha) + '">' + esc(m.modelo) + ' · ' + esc(m.serial) + '</button>' +
       '<div class="l2">' + esc(n === 1 ? '1 doador' : n + ' doadores') + '\n' + esc(l2) + '</div></div>';
@@ -270,13 +274,16 @@ function abrir(item){
   S.atual = item || null;
   var it = item || { 'TÉCNICO': '', 'SITUAÇÃO': 'EM ANÁLISE', 'SERIAL': norm($('busca').value).length >= 5 ? $('busca').value.trim().toUpperCase() : '' };
   S.sit = it['SITUAÇÃO'] || '';
-  $('tituloItem').textContent = item ? (it.SERIAL || 'Aparelho') : 'Novo aparelho';
+  $('tituloItem').textContent = item ? (/^S\/N /.test(it.SERIAL || '') ? 'Sem serial' : (it.SERIAL || 'Aparelho')) : 'Novo aparelho';
   var h = '';
   // Aparelho novo: sempre pergunta quem está adicionando (nomes da aba LISTAS › TÉCNICO e da planilha de produção).
+  // Vários iguais em seguida (ex.: lote de controles): um toque repete tipo, marca, modelo e situação do último cadastrado.
+  if (!item && S.ultimo) h += '<p><button class="chip" type="button" id="igual" style="width:100%">Igual ao último: ' + esc([S.ultimo.MARCA, S.ultimo.MODELO].filter(Boolean).join(' ') || S.ultimo.TIPO || 'aparelho') + '</button></p>';
   if (!item) h += '<label>QUEM ESTÁ ADICIONANDO?</label><div class="sits" id="quem">' + (S.listas['TÉCNICO'] || []).map(function(n){
     return '<button class="chip" type="button">' + esc(n) + '</button>'; }).join('') + '</div>';
   h += '<div class="nr">';
-  if (item && it.DEFEITO) h += '<label>DEFEITO (PREVISÃO DAS PEÇAS)</label><div class="notas combina">' + esc(String(it.DEFEITO).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">Sai do defeito e das observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
+  if (item && it.DEFEITO) h += '<label>DEFEITO (PREVISÃO DAS PEÇAS)</label><div class="notas combina">' + esc(String(it.DEFEITO).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">A IA lê o defeito e todas as observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
+  if (item && it._teste) h += '<label>PRÓXIMO TESTE</label><div class="notas combina">' + esc(it._teste) + '</div>';
   if (item && (it._compradas || []).length) h += '<label>PEÇA COMPRADA QUE SERVE</label><div class="notas combina">' + esc(it._compradas.join('\n')) + '</div>';
   if (item && it['COMBINA COM']) h += '<label>COMBINA COM (MESMO MODELO)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
   h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p></div>';
@@ -292,7 +299,8 @@ function abrir(item){
     return '<div class="obs"><div class="quem">' + esc(o.data) + ' · ' + esc(o.tecnico || '—') + '</div>' + esc(o.texto) + '</div>';
   }).join('') + '</div>';
   h += '<label id="lNota">NOVA OBSERVAÇÃO</label><textarea id="f_nota" placeholder="O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok"></textarea>';
-  h += '<div class="rodape" style="text-align:left">Fica com seu nome e a data de hoje. As observações antigas nunca são apagadas.</div>';
+  // Aparelho que já existe: mostra com que nome a observação vai ficar (celular ou PC dividido entre técnicos).
+  h += '<div class="rodape" style="text-align:left">' + (item ? 'Fica como <b id="obsNome">' + esc(S.tecnico || 'sem nome') + '</b> (<a href="#" id="trocarObs">trocar</a>) e a data de hoje.' : 'Fica com o nome de quem está adicionando e a data de hoje.') + ' As observações antigas nunca são apagadas.</div>';
   if (item) h += '<div class="rodape">Entrada ' + esc(it['DATA ENTRADA']||'—') + ' · atualizado ' + esc(it['ÚLTIMA ATUALIZAÇÃO']||'—') + '</div>';
   $('form').innerHTML = h;
   // Notebook com duas etiquetas: depois da 1ª foto o botão vira "Foto de outra etiqueta" e a 2ª só completa o que faltou.
@@ -321,6 +329,13 @@ function abrir(item){
     var f = $('f_' + 'TÉCNICO'.replace(/\W/g,'_')); if (f) f.value = b.textContent;
     Array.prototype.forEach.call($('quem').children, function(x){ x.classList.toggle('on', x===b); });
   }; });
+  if ($('trocarObs')) $('trocarObs').onclick = function(e){ e.preventDefault(); pedirNome(); };
+  if ($('igual')) $('igual').onclick = function(){
+    ['TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO', 'EAN', 'GARANTIA'].forEach(function(c){ porCampo(c, S.ultimo[c], true); });
+    var alvo = S.ultimo['SITUAÇÃO'];
+    Array.prototype.forEach.call($('sits').children, function(b){ if (b.getAttribute('data-s') === alvo) b.click(); });
+    $('f_nota').focus();
+  };
   aplicarModo();
   $('pItem').classList.add('on');
   $('pItem').scrollTop = 0;
@@ -347,6 +362,7 @@ function salvar(){
   $('salvar').disabled = true;
   chamar('apiSalvar', [item, quem], function(r){
     $('salvar').disabled = false;
+    if (r.ok && !S.atual) S.ultimo = item;
     if (!r.ok){
       if (r.existe){ aviso(r.erro + ' Abrindo ele.'); abrir(r.existe); return; }
       aviso(r.erro); return;
@@ -355,6 +371,8 @@ function salvar(){
     aviso(r.producao ? 'Salvo. Na planilha de produção vai: ' + r.producao : r.nada ? 'Nada mudou.' : 'Salvo.');
     $('busca').value = '';
     carregar();
+    // Depois de salvar, a IA lê todas as observações do aparelho e acerta a previsão do defeito (sem segurar a tela).
+    if (S.ia && !r.nada && S.sit !== 'REPARADO') chamar('apiPrever', [item.SERIAL || ''], function(p){ if (p && p.feitas) carregar(); }, null, true);
   }, function(){ $('salvar').disabled = false; });
 }
 
@@ -366,7 +384,9 @@ function pedirNome(){
 }
 function definirNome(n){
   n = String(n||'').trim().toUpperCase(); if (!n) return;
-  S.tecnico = n; guardar('tecnico', n); $('pQuem').classList.remove('on'); carregar();
+  S.tecnico = n; guardar('tecnico', n); $('pQuem').classList.remove('on');
+  if ($('obsNome')) $('obsNome').textContent = n;
+  carregar();
 }
 
 // ===== Leitura de etiqueta por foto (mesma ideia do SCAN, sem IA) =====
