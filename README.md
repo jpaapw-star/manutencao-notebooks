@@ -18,6 +18,12 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 | `src/Index.html` | Tela do app |
 | `scripts/enviar-notas.js` | Manda `notas/` para o app (usado pelo GitHub) |
 
+## 1.20.1: correções da vistoria
+
+- Nome novo de técnico entra depois da última célula preenchida da coluna LISTAS › TÉCNICO (antes, com uma célula vazia no meio, sobrescrevia um nome).
+- Aparelho REPARADO com ÚLTIMA ATUALIZAÇÃO de outro mês só sai das abas de defeitos se o serial já estiver numa aba de mês da planilha de produção.
+- Anotações do outro projeto chegam de qualquer branch (busca de hora em hora).
+
 ## 1.20.0: a previsão aprende, próximo teste e compatibilidade melhor (novembro/2026)
 
 **A previsão aprende com os consertos**

@@ -443,10 +443,37 @@ test('descrição pelo modelo: resposta limpa, NADA vira vazio', () => {
   assert.strictEqual(descricaoDaResposta('NADA'), '');
 });
 
+test('previsão: "não liga mesmo ao carregador" não acusa o carregador', () => {
+  assert.strictEqual(preverPecas('NÃO LIGA MESMO AO CARREGADOR', []).texto, 'PLACA-MÃE (SUSPEITA)');
+  assert.strictEqual(preverPecas('não ligava mesmo conectado ao carregador', []).texto, 'PLACA-MÃE (SUSPEITA)');
+  assert.strictEqual(preverPecas('CARREGADOR NÃO FUNCIONA', []).texto, 'CARREGADOR (CONFIRMADA)');
+});
+
+test('reparado antigo: só sai da planilha de defeitos se o serial estiver numa aba de mês', () => {
+  const { seriaisDosMeses_ } = m.exports;
+  const aba = (nome, linhas) => ({
+    getName: () => nome, getLastRow: () => linhas.length, getLastColumn: () => linhas[0].length,
+    getRange: (r, c, n, k) => ({ getValues: () => linhas.slice(r - 1, r - 1 + n).map(l => l.slice(c - 1, c - 1 + (k || 1))) })
+  });
+  const ss = { getSheets: () => [
+    aba('OUTUBRO 2026', [['TÉCNICO', 'SERIAL'], ['ANA', 'pe0fxeyd']]),
+    aba('RESUMO', [['SERIAL'], ['NAOCONTA1']])
+  ] };
+  const ja = seriaisDosMeses_(ss);
+  assert.deepStrictEqual(Object.keys(ja), ['PE0FXEYD']);
+});
+
 test('nomes de quem adiciona: lista primeiro, sem repetir', () => {
   const { juntarNomes } = m.exports;
   assert.deepStrictEqual(juntarNomes(['JOÃO PEDRO'], ['ana leal', 'JOAO PEDRO', '', 'GABRIEL  ANTÔNIO', 'Ana Leal', '—']),
     ['JOÃO PEDRO', 'ANA LEAL', 'GABRIEL ANTÔNIO']);
+});
+
+test('nome novo na LISTAS vai depois da última célula preenchida (vazia no meio não sobrescreve)', () => {
+  const { ultimaPreenchida } = m.exports;
+  // TÉCNICO: ANA, (vazio), BRUNO, (vazio) → índice 3; o nome novo vai na linha 3 + 2 = 5
+  assert.strictEqual(ultimaPreenchida([['TÉCNICO'], ['ANA'], [''], ['BRUNO'], ['']]), 3);
+  assert.strictEqual(ultimaPreenchida([['TÉCNICO']]), 0);
 });
 
 test('previsão: peça citada só no teste não vira defeito (casos reais de novembro/2026)', () => {

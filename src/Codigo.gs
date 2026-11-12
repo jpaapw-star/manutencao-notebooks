@@ -1856,7 +1856,7 @@ function registrarArrumados_(itens, mapa, ssManut) {
   var marcas = props.getProperties();
   var hoje = new Date();
   var mesAtual = Utilities.formatDate(hoje, 'America/Sao_Paulo', 'MM/yyyy');
-  var novos = [], sair = [];
+  var novos = [], sair = [], antigos = [];
   itens.forEach(function (it) {
     var sn = normalizarSerial(it.SERIAL);
     if (!sn) return;
@@ -1865,11 +1865,21 @@ function registrarArrumados_(itens, mapa, ssManut) {
     if (!feito) { if (marcas[chave]) props.deleteProperty(chave); return; }
     if (marcas[chave]) { sair.push(it); return; }   // já está na planilha de produção: sai da planilha de defeitos
     // Só o que foi arrumado neste mês (o que é mais antigo já devia estar na planilha).
-    if (String(it['ÚLTIMA ATUALIZAÇÃO'] || '').slice(3) !== mesAtual) { props.setProperty(chave, 'antigo'); sair.push(it); return; }
+    // Só sai da planilha de defeitos se o serial já estiver em alguma aba de mês da planilha de produção (conferido abaixo).
+    if (String(it['ÚLTIMA ATUALIZAÇÃO'] || '').slice(3) !== mesAtual) { antigos.push(it); return; }
     novos.push(it);
   });
-  if (!novos.length) { if (ssManut) tirarReparados_(ssManut, sair); return 0; }
+  if (!novos.length && !antigos.length) { if (ssManut) tirarReparados_(ssManut, sair); return 0; }
   var ss = SpreadsheetApp.openById(PLANILHAS.ARRUMADOS);
+  if (antigos.length) {
+    var naProducao = seriaisDosMeses_(ss);
+    antigos.forEach(function (it) {
+      var sn = normalizarSerial(it.SERIAL);
+      if (naProducao[sn]) { props.setProperty('arr:' + sn, 'antigo'); sair.push(it); }
+      // Não achou: fica na planilha de defeitos (nada é apagado sem estar gravado na produção).
+    });
+  }
+  if (!novos.length) { if (ssManut) tirarReparados_(ssManut, sair); return 0; }
   var nome = abaDoMes(hoje);
   var aba = ss.getSheetByName(nome) || criarAbaDoMes_(ss, nome);
   var cab = cabecalho_(aba);
@@ -1893,6 +1903,18 @@ function registrarArrumados_(itens, mapa, ssManut) {
   });
   if (ssManut) tirarReparados_(ssManut, sair);
   return feitos;
+}
+
+/** Seriais de todas as abas de mês (ex.: "OUTUBRO 2026") da planilha de produção. */
+function seriaisDosMeses_(ss) {
+  var ja = {};
+  ss.getSheets().forEach(function (aba) {
+    if (ultimaAbaDeMes([aba.getName()]) !== aba.getName() || aba.getLastRow() < 2) return;
+    var cS = cabecalho_(aba).map(semAcento_).findIndex(function (h) { return /^(SERIAL|SERIE)$/.test(h.trim()); });
+    if (cS < 0) return;
+    aba.getRange(2, cS + 1, aba.getLastRow() - 1, 1).getValues().forEach(function (l) { var sn = normalizarSerial(l[0]); if (sn) ja[sn] = true; });
+  });
+  return ja;
 }
 
 /**
@@ -2052,9 +2074,17 @@ function tecnicos_(ss, daLista, itens) {
   var l = ss.getSheetByName('LISTAS');
   if (faltam.length && l) {
     var j = cabecalho_(l).indexOf('TÉCNICO');
-    if (j >= 0) l.getRange((daLista || []).length + 2, j + 1, faltam.length, 1).setValues(faltam.map(function (n) { return [n]; }));
+    // Escreve depois da última célula preenchida da coluna (a lista ignora as vazias do meio; contar por ela sobrescrevia nomes).
+    if (j >= 0) l.getRange(ultimaPreenchida(l.getRange(1, j + 1, Math.max(l.getLastRow(), 1), 1).getValues()) + 2, j + 1, faltam.length, 1)
+      .setValues(faltam.map(function (n) { return [n]; }));
   }
   return nomes;
+}
+
+/** Índice (0 = cabeçalho) da última linha com algo escrito numa coluna lida com getValues. Pura. */
+function ultimaPreenchida(col) {
+  for (var i = col.length - 1; i > 0; i--) if (String(col[i][0]).trim()) return i;
+  return 0;
 }
 
 function valorMes_(nome) {
@@ -2459,5 +2489,5 @@ function apiSincronizar() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { juntarNomes: juntarNomes, corrigirEscrita: corrigirEscrita, semContexto: semContexto, modeloLimpo: modeloLimpo, serialInterno: serialInterno, serialParaProducao: serialParaProducao, completarDeIguais: completarDeIguais, colunaTecnico: colunaTecnico, perguntaDescricao: perguntaDescricao, descricaoDaResposta: descricaoDaResposta, eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, pecasComGrau: pecasComGrau, testeSugerido: testeSugerido, doadorDeTeste: doadorDeTeste, pecasCitadas: pecasCitadas, licaoDoConserto: licaoDoConserto, consertosDoModelo: consertosDoModelo, modeloParecido: modeloParecido, perguntaPrevisao: perguntaPrevisao, previsaoDaIA: previsaoDaIA, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
+  module.exports = { ultimaPreenchida: ultimaPreenchida, seriaisDosMeses_: seriaisDosMeses_, juntarNomes: juntarNomes, corrigirEscrita: corrigirEscrita, semContexto: semContexto, modeloLimpo: modeloLimpo, serialInterno: serialInterno, serialParaProducao: serialParaProducao, completarDeIguais: completarDeIguais, colunaTecnico: colunaTecnico, perguntaDescricao: perguntaDescricao, descricaoDaResposta: descricaoDaResposta, eanDaIA: eanDaIA, serialDaIA: serialDaIA, resumoProducao: resumoProducao, ordenarObs: ordenarObs, abaDoMes: abaDoMes, ultimaAbaDeMes: ultimaAbaDeMes, descricaoReparo: descricaoReparo, linhaManutencao: linhaManutencao, medidas: medidas, textoMedidas: textoMedidas, medidasBatem: medidasBatem, compradaServe: compradaServe, vocabulario: vocabulario, palavrasExtras: palavrasExtras, previsaoFinal: previsaoFinal, precisaPesquisar: precisaPesquisar, conferirPesquisa: conferirPesquisa, respostaModelos: respostaModelos, pecasComGrau: pecasComGrau, testeSugerido: testeSugerido, doadorDeTeste: doadorDeTeste, pecasCitadas: pecasCitadas, licaoDoConserto: licaoDoConserto, consertosDoModelo: consertosDoModelo, modeloParecido: modeloParecido, perguntaPrevisao: perguntaPrevisao, previsaoDaIA: previsaoDaIA, codigoPeca: codigoPeca, pecaServe: pecaServe, pecaServeEstoque: pecaServeEstoque, compatDe: compatDe, tipoDaPeca: tipoDaPeca, modelosCombinam: modelosCombinam, estoqueDe: estoqueDe, aparelhosParaPecas: aparelhosParaPecas, coresDosGrupos: coresDosGrupos, abaDoItem: abaDoItem, linhasCompativeis: linhasCompativeis, ehGarantia: ehGarantia, planosDeMontagem: planosDeMontagem, lerNota: lerNota, preverPecas: preverPecas, pecasDaColuna: pecasDaColuna, resumoObs: resumoObs, celulaNotas: celulaNotas, notaCompleta: notaCompleta, notasAntigas: notasAntigas, combinacoes: combinacoes, normalizarSerial: normalizarSerial, seriaisFinalizados: seriaisFinalizados, paraFinalizar: paraFinalizar };
 }
