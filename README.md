@@ -18,6 +18,12 @@ Instalação: [docs/INSTALACAO.md](docs/INSTALACAO.md). Testes: `npm test`.
 | `src/Index.html` | Tela do app |
 | `scripts/enviar-notas.js` | Manda `notas/` para o app (usado pelo GitHub) |
 
+## 1.21.0: ligado ao painel Meus apps (novembro/2026)
+
+- Link "‹ Meus apps" no topo volta ao painel central.
+- Busca vinda do painel (`?q=`) já abre a lista filtrada.
+- Ícone do SCAN como ícone do app; botão do controle de qualidade maior (44 px).
+
 ## 1.20.0: a previsão aprende, próximo teste e compatibilidade melhor (novembro/2026)
 
 **A previsão aprende com os consertos**
