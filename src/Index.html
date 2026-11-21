@@ -12,22 +12,24 @@
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { margin:0; background:var(--fundo); color:var(--texto); font:16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
-  .tela { max-width:720px; margin:0 auto; padding:16px 16px 96px; }
-  h1 { font-size:30px; font-weight:700; letter-spacing:-.5px; margin:8px 0 4px; }
+  .tela { max-width:880px; margin:0 auto; padding:16px 16px 140px; }
+  h1 { font-size:28px; font-weight:700; letter-spacing:-.5px; margin:8px 0 4px; }
   .sub { color:var(--fraco); font-size:14px; margin-bottom:16px; }
-  .sub a { color:var(--fraco); }
+  .sub a { color:var(--texto); display:inline-flex; align-items:center; min-height:44px; padding:0 4px; }
   input, select, textarea { width:100%; font:inherit; color:var(--texto); background:var(--cartao); border:1px solid transparent; border-radius:12px; padding:12px 14px; outline:none; }
   input:focus, select:focus, textarea:focus { border-color:var(--fraco); }
   textarea { min-height:90px; resize:vertical; }
-  label { display:block; font-size:13px; color:var(--fraco); margin:14px 0 6px; }
+  label { display:block; font-size:15px; font-weight:600; color:var(--texto); margin:16px 0 6px; }
+  details.mais { margin-top:16px; }
+  details.mais summary { min-height:44px; display:flex; align-items:center; color:var(--texto); font-weight:600; cursor:pointer; }
   .cabeca { display:flex; justify-content:space-between; align-items:center; gap:12px; }
   .monta { border-bottom:1px solid var(--linha); padding:14px 2px; }
   .monta button { background:none; border:0; padding:0; color:var(--texto); font:inherit; font-weight:600; text-align:left; }
   .monta .l2 { color:var(--fraco); font-size:14px; margin-top:4px; white-space:pre-line; }
   .busca { display:flex; gap:8px; }
   .busca input { flex:1; }
-  .chips { display:flex; gap:8px; overflow-x:auto; padding:14px 0 6px; scrollbar-width:none; }
-  .chip { flex:none; border:1px solid var(--linha); background:none; color:var(--texto); border-radius:999px; padding:7px 13px; font:inherit; font-size:14px; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; padding:14px 0 6px; }
+  .chip { flex:none; border:1px solid var(--linha); background:none; color:var(--texto); border-radius:999px; min-height:44px; padding:0 14px; font:inherit; font-size:15px; }
   .chip.on { background:var(--botao); color:var(--botaoTexto); border-color:var(--botao); }
   .lista { margin-top:8px; }
   .item { display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid var(--linha); color:inherit; font:inherit; padding:14px 2px; }
@@ -37,7 +39,8 @@
   .btn { border:0; border-radius:12px; padding:13px 18px; font:inherit; font-weight:600; background:var(--botao); color:var(--botaoTexto); }
   .btn.sec { background:var(--cartao); color:var(--texto); }
   .btn:disabled { opacity:.5; }
-  .flutua { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(20px + env(safe-area-inset-bottom)); box-shadow:0 6px 24px rgba(0,0,0,.25); }
+  .flutua { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(20px + env(safe-area-inset-bottom)); box-shadow:0 6px 24px rgba(0,0,0,.25); min-height:52px; }
+  @media (min-width:900px) { .flutua { left:auto; right:32px; transform:none; } }
   .painel { position:fixed; inset:0; background:var(--fundo); overflow-y:auto; display:none; z-index:5; }
   .painel.on { display:block; }
   #pQuem { z-index:6; }
@@ -54,7 +57,7 @@
   .aviso { position:fixed; left:16px; right:16px; bottom:calc(84px + env(safe-area-inset-bottom)); max-width:520px; margin:0 auto; background:var(--botao); color:var(--botaoTexto); border-radius:12px; padding:12px 16px; display:none; z-index:9; text-align:center; }
   .aviso.on { display:block; }
   .rodape { color:var(--fraco); font-size:13px; margin-top:24px; text-align:center; }
-  .rodape button { background:none; border:0; color:var(--fraco); text-decoration:underline; font:inherit; min-height:44px; padding:0 12px; }
+  .rodape button { border:0; border-radius:12px; background:var(--cartao); color:var(--texto); font:inherit; font-weight:600; min-height:44px; padding:0 18px; }
   .meusapps { display:inline-flex; align-items:center; min-height:44px; margin:-10px 0 -4px; color:var(--fraco); text-decoration:none; font-size:15px; }
 </style>
 </head>
@@ -80,7 +83,7 @@
     <div class="sits" id="nomes"></div>
     <label>Outro nome</label>
     <input id="outroNome" placeholder="Seu nome">
-    <p><button class="btn" id="salvarNome">Continuar</button></p>
+    <p><button class="btn" id="salvarNome">Continuar</button> <button class="btn sec" id="pularNome">Agora não</button></p>
   </div>
 </div>
 
@@ -145,7 +148,7 @@ function aplicarInicio(d){
     S.listas = d.listas || {}; S.itens = d.itens || []; S.carregado = true; S.parcial = !!d.parcial;
     S.itens.forEach(chaveDeBusca); S.ia = !!d.ia; S.montagens = d.montagens || [];
     var bm = $('montar'); bm.style.display = S.montagens.length ? '' : 'none'; bm.textContent = '⇄ ' + S.montagens.length + ' para montar';
-    $('sub').innerHTML = (S.tecnico ? esc(S.tecnico) + ' · <a href="#" id="trocar">trocar</a> · ' : '') + '<a href="' + esc(d.planilha) + '" target="_blank">abrir planilha</a>';
+    $('sub').innerHTML = (S.tecnico ? esc(S.tecnico) + ' · <a href="#" id="trocar">Trocar nome</a> · ' : '') + '<a href="' + esc(d.planilha) + '" target="_blank">Abrir planilha</a>';
     var t = $('trocar'); if (t) t.onclick = function(e){ e.preventDefault(); pedirNome(); };
     desenhar();
 }
@@ -159,7 +162,7 @@ var CAMPOS_REPARO = ['TÉCNICO', 'MARCA', 'MODELO', 'SERIAL'];
 function aplicarModo(){
   var rep = S.sit === 'REPARADO';
   $('form').classList.toggle('reparo', rep);
-  $('lNota').textContent = rep ? 'O QUE FOI FEITO (VAI PARA A PLANILHA DE PRODUÇÃO)' : S.atual ? 'NOVA OBSERVAÇÃO' : 'DEFEITO';
+  $('lNota').textContent = rep ? 'O que foi feito (vai para a planilha de produção)' : S.atual ? 'Nova observação' : 'Defeito';
   $('f_nota').placeholder = rep ? 'Escreva do seu jeito. Na planilha vai só o resumo, ex.: TROCA DE TELA E REPARO NA INTERFACE DE ÁUDIO' : S.atual ? 'O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok' : 'O defeito que apareceu. Toque abaixo ou dite pelo microfone';
   if (rep && !$('f_nota').value.trim() && S.atual && S.atual._sugestao) $('f_nota').value = S.atual._sugestao;
   if (rep && S.atual && !valorCampo('TÉCNICO') && S.tecnico) porCampo('TÉCNICO', S.tecnico);
@@ -183,6 +186,7 @@ function desenhar(){
   if (comb) chips.push(['COMBINA', '⇄ Combinam · ' + comb]);
   if (S.tecnico) chips.push(['MEUS', 'Comigo · ' + abertos.filter(function(i){ return sem(i['TÉCNICO']) === sem(S.tecnico); }).length]);
   situacoes().forEach(function(s){ if (cont[s] && s !== 'SUCATA') chips.push([s, s.charAt(0) + s.slice(1).toLowerCase() + ' · ' + cont[s]]); });
+  chips = chips.filter(function(c){ return c[0] === S.filtro || !/ · 0$/.test(c[1]); });
   $('chips').innerHTML = chips.map(function(c){ return '<button class="chip' + (S.filtro===c[0]?' on':'') + '" data-f="' + esc(c[0]) + '">' + esc(c[1]) + '</button>'; }).join('');
   Array.prototype.forEach.call($('chips').children, function(b){ b.onclick = function(){ S.filtro = b.getAttribute('data-f'); S.mostrar = MOSTRAR; desenhar(); }; });
   var q = sem($('busca').value).trim(), qn = norm($('busca').value);
@@ -203,7 +207,7 @@ function desenhar(){
   lista = lista.slice(0, S.mostrar);
   $('lista').innerHTML = (lista.length ? lista.map(function(i){
     var t = [i.MARCA, i.MODELO].filter(Boolean).join(' ') || i['DESCRIÇÃO'] || i.TIPO || 'Aparelho';
-    var l2 = [i['SITUAÇÃO'], String(i.DEFEITO || '').split('|')[0].trim(), i['TÉCNICO']].filter(Boolean).join(' · ');
+    var l2 = [frase(i['SITUAÇÃO']), frase(String(i.DEFEITO || '').split('|')[0].trim()), frase(i['TÉCNICO'])].filter(Boolean).join(' · ');
     if (i['COMBINA COM']) l2 += ' · ⇄ combina com ' + String(i['COMBINA COM']).split('\n').length;
     return '<button class="item" data-l="' + esc(i._aba + ':' + i._linha) + '"><b>' + esc(t) + '</b> <span style="color:var(--fraco)">' + esc(/^S\/N /.test(i.SERIAL||'') ? 'sem serial' : (i.SERIAL||'')) + '</span><div class="l2">' + esc(l2) + '</div></button>';
   }).join('') : '<div class="vazio">' + (q ? (S.procurando ? 'Procurando na planilha toda…' : 'Nada encontrado. Toque em "Novo aparelho" para cadastrar.') : 'Nenhum aparelho aqui.') + '</div>')
@@ -252,6 +256,9 @@ function mostrarMontagens(){
   $('pMontar').classList.add('on');
 }
 
+var ROTULOS = { 'NF':'Nota fiscal', 'EAN':'EAN', 'TÉCNICO':'Técnico', 'DESCRIÇÃO':'Descrição', 'SITUAÇÃO':'Situação' };
+function rotulo(n){ n = String(n||''); return ROTULOS[n] || (n.charAt(0) + n.slice(1).toLowerCase()); }
+function frase(t){ t = String(t||''); return t === t.toUpperCase() ? t.charAt(0) + t.slice(1).toLowerCase() : t; }
 function campo(nome, tipo, valor){
   var id = 'f_' + nome.replace(/\W/g,'_');
   var v = esc(valor);
@@ -259,17 +266,17 @@ function campo(nome, tipo, valor){
     var chave = tipo === 'defeito' ? 'DEFEITOS COMUNS' : nome;
     var ops = (S.listas[chave] || []);
     if (tipo === 'lista'){
-      var o = ['<option value=""></option>'].concat(ops.map(function(x){ return '<option' + (x===valor?' selected':'') + '>' + esc(x) + '</option>'; }));
+      var o = ['<option value="">Escolher…</option>'].concat(ops.map(function(x){ return '<option' + (x===valor?' selected':'') + '>' + esc(x) + '</option>'; }));
       if (valor && ops.indexOf(valor) < 0) o.push('<option selected>' + v + '</option>');
-      return '<label>' + esc(nome) + '</label><select id="' + id + '">' + o.join('') + '</select>';
+      return '<label>' + esc(rotulo(nome)) + '</label><select id="' + id + '">' + o.join('') + '</select>';
     }
-    return '<label>' + esc(nome) + '</label><input id="' + id + '" list="' + id + '_l" value="' + v + '"><datalist id="' + id + '_l">' + ops.map(function(x){ return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
+    return '<label>' + esc(rotulo(nome)) + '</label><input id="' + id + '" list="' + id + '_l" value="' + v + '"><datalist id="' + id + '_l">' + ops.map(function(x){ return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
   }
   if (tipo === 'data'){
     var iso = /^\d{2}\/\d{2}\/\d{4}$/.test(valor||'') ? valor.split('/').reverse().join('-') : '';
-    return '<label>' + esc(nome) + '</label><input id="' + id + '" type="date" value="' + iso + '">';
+    return '<label>' + esc(rotulo(nome)) + '</label><input id="' + id + '" type="date" value="' + iso + '">';
   }
-  return '<label>' + esc(nome) + '</label><input id="' + id + '" value="' + v + '"' + (nome==='SERIAL'?' autocapitalize="characters" autocorrect="off"':'') + '>';
+  return '<label>' + esc(rotulo(nome)) + '</label><input id="' + id + '" value="' + v + '"' + (nome==='SERIAL'?' autocapitalize="characters" autocorrect="off"':'') + '>';
 }
 
 function abrir(item){
@@ -281,26 +288,28 @@ function abrir(item){
   // Aparelho novo: sempre pergunta quem está adicionando (nomes da aba LISTAS › TÉCNICO e da planilha de produção).
   // Vários iguais em seguida (ex.: lote de controles): um toque repete tipo, marca, modelo e situação do último cadastrado.
   if (!item && S.ultimo) h += '<p><button class="chip" type="button" id="igual" style="width:100%">Igual ao último: ' + esc([S.ultimo.MARCA, S.ultimo.MODELO].filter(Boolean).join(' ') || S.ultimo.TIPO || 'aparelho') + '</button></p>';
-  if (!item) h += '<label>QUEM ESTÁ ADICIONANDO?</label><div class="sits" id="quem">' + (S.listas['TÉCNICO'] || []).map(function(n){
-    return '<button class="chip" type="button">' + esc(n) + '</button>'; }).join('') + '</div>';
+  if (!item) h += '<label>Quem está adicionando</label><div class="sits" id="quem">' + (S.listas['TÉCNICO'] || []).map(function(n){
+    return '<button class="chip' + (sem(n) === sem(S.tecnico) ? ' on' : '') + '" type="button">' + esc(n) + '</button>'; }).join('') + '</div>';
   h += '<div class="nr">';
-  if (item && it.DEFEITO) h += '<label>DEFEITO (PREVISÃO DAS PEÇAS)</label><div class="notas combina">' + esc(String(it.DEFEITO).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">A IA lê o defeito e todas as observações. Para mudar, escreva o que achou (ex.: "webcam ok", "troquei a tela", "BIOS confirmada com defeito").</div>';
-  if (item && it._teste) h += '<label>PRÓXIMO TESTE</label><div class="notas combina">' + esc(it._teste) + '</div>';
-  if (item && (it._compradas || []).length) h += '<label>PEÇA COMPRADA QUE SERVE</label><div class="notas combina">' + esc(it._compradas.join('\n')) + '</div>';
-  if (item && it['COMBINA COM']) h += '<label>COMBINA COM (MESMO MODELO)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
+  if (item && it.DEFEITO) h += '<label>Defeito</label><div class="notas combina">' + esc(String(it.DEFEITO).split(' | ').join('\n')) + '</div><div class="rodape" style="text-align:left">Achou outra coisa? Escreva na observação (ex.: "troquei a tela").</div>';
+  if (item && it._teste) h += '<label>Próximo teste</label><div class="notas combina">' + esc(it._teste) + '</div>';
+  if (item && (it._compradas || []).length) h += '<label>Peça comprada que serve</label><div class="notas combina">' + esc(it._compradas.join('\n')) + '</div>';
+  if (item && it['COMBINA COM']) h += '<label>Combina com (mesmo modelo)</label><div class="notas combina">' + esc(it['COMBINA COM']) + '</div>';
   h += '<p><button class="btn' + (item ? ' sec' : '') + '" id="fotoEtiqueta" style="width:100%">Foto da etiqueta</button></p></div>';
-  h += '<label>SITUAÇÃO</label><div class="sits" id="sits">' + situacoes().map(function(s){ return '<button class="chip' + (s===S.sit?' on':'') + '" data-s="' + esc(s) + '">' + esc(s.charAt(0) + s.slice(1).toLowerCase()) + '</button>'; }).join('') + '</div>';
+  h += '<label>Situação</label><div class="sits" id="sits">' + situacoes().map(function(s){ return '<button class="chip' + (s===S.sit?' on':'') + '" data-s="' + esc(s) + '">' + esc(s.charAt(0) + s.slice(1).toLowerCase()) + '</button>'; }).join('') + '</div>';
   h += '<div class="grade">';
+  var POUCO = ['NF', 'DESCRIÇÃO', 'EAN'], extra = '', temExtra = false;
   CAMPOS.forEach(function(c, k){
     var html = campo(c[0], c[1], it[c[0]]), nr = CAMPOS_REPARO.indexOf(c[0]) < 0 ? ' class="nr"' : '';
-    h += (c[0]==='SERIAL' || c[0]==='DESCRIÇÃO') ? '</div><div' + nr + '>' + html + '</div><div class="grade">' : '<div' + nr + '>' + html + '</div>';
+    if (POUCO.indexOf(c[0]) >= 0) { extra += '<div' + nr + '>' + html + '</div>'; if (it[c[0]]) temExtra = true; return; }
+    h += (c[0]==='SERIAL') ? '</div><div' + nr + '>' + html + '</div><div class="grade">' : '<div' + nr + '>' + html + '</div>';
   });
-  h += '</div>';
+  h += '</div><details class="mais nr"' + (temExtra ? ' open' : '') + '><summary>Mais campos: nota fiscal, descrição, EAN</summary>' + extra + '</details>';
   var obs = (it._obs || []).slice().reverse();
-  if (obs.length) h += '<div class="nr"><label>O QUE JÁ FOI FEITO (' + obs.length + ')</label>' + obs.map(function(o){
+  if (obs.length) h += '<div class="nr"><label>O que já foi feito (' + obs.length + ')</label>' + obs.map(function(o){
     return '<div class="obs"><div class="quem">' + esc(o.data) + ' · ' + esc(o.tecnico || '—') + '</div>' + esc(o.texto) + '</div>';
   }).join('') + '</div>';
-  h += '<label id="lNota">NOVA OBSERVAÇÃO</label><textarea id="f_nota" placeholder="O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok"></textarea>';
+  h += '<label id="lNota">Nova observação</label><textarea id="f_nota" placeholder="O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok"></textarea>';
   // Aparelho que já existe: mostra com que nome a observação vai ficar (celular ou PC dividido entre técnicos).
   h += '<div class="rodape" style="text-align:left">' + (item ? 'Fica como <b id="obsNome">' + esc(S.tecnico || 'sem nome') + '</b> (<a href="#" id="trocarObs">trocar</a>) e a data de hoje.' : 'Fica com o nome de quem está adicionando e a data de hoje.') + ' As observações antigas nunca são apagadas.</div>';
   if (item) h += '<div class="rodape">Entrada ' + esc(it['DATA ENTRADA']||'—') + ' · atualizado ' + esc(it['ÚLTIMA ATUALIZAÇÃO']||'—') + '</div>';
@@ -314,7 +323,7 @@ function abrir(item){
   // Defeitos comuns: um toque acrescenta no campo (dá para ditar pelo microfone do teclado também).
   // Sem campo DEFEITO: o defeito é escrito como observação (a primeira, num aparelho novo). Os defeitos comuns ficam embaixo dela.
   var fd = $('f_nota');
-  if (!item) { $('lNota').textContent = 'DEFEITO'; }
+  if (!item) { $('lNota').textContent = 'Defeito'; }
   if (fd) {
     var box = document.createElement('div'); box.className = 'sits'; box.style.marginTop = '8px';
     (S.listas['DEFEITOS COMUNS'] || []).slice(0, 14).forEach(function(d){
@@ -331,6 +340,7 @@ function abrir(item){
     var f = $('f_' + 'TÉCNICO'.replace(/\W/g,'_')); if (f) f.value = b.textContent;
     Array.prototype.forEach.call($('quem').children, function(x){ x.classList.toggle('on', x===b); });
   }; });
+  if ($('quem')) { var marcado = $('quem').querySelector('.on'); if (marcado) marcado.click(); }
   if ($('trocarObs')) $('trocarObs').onclick = function(e){ e.preventDefault(); pedirNome(); };
   if ($('igual')) $('igual').onclick = function(){
     ['TIPO', 'MARCA', 'MODELO', 'DESCRIÇÃO', 'EAN', 'GARANTIA'].forEach(function(c){ porCampo(c, S.ultimo[c], true); });
@@ -537,7 +547,7 @@ function completarDescricao(){
   chamar('apiDescricaoDoModelo', [valorCampo('MARCA'), mod], function(d){ if (d && !valorCampo('DESCRIÇÃO') && valorCampo('MODELO') === mod) { porCampo('DESCRIÇÃO', d); aviso('Descrição: ' + d); } }, function(){});
 }
 $('ler').style.display = '';
-$('ler').textContent = 'Foto';
+$('ler').textContent = 'Foto da etiqueta';
 $('ler').title = 'Foto da etiqueta';
 $('ler').onclick = function(){
   escolherFoto(function(r){
@@ -563,7 +573,8 @@ $('fecharMontar').onclick = function(){ $('pMontar').classList.remove('on'); };
 $('fechar').onclick = function(){ $('pItem').classList.remove('on'); };
 $('salvar').onclick = salvar;
 $('salvarNome').onclick = function(){ definirNome($('outroNome').value); };
-$('rodape').innerHTML = '<button id="conferir">Conferir agora com o controle de qualidade</button>';
+$('pularNome').onclick = function(){ $('pQuem').classList.remove('on'); };
+$('rodape').innerHTML = '<button id="conferir">Conferir qualidade</button>';
 $('conferir').onclick = function(){
   aviso('Conferindo…');
   chamar('apiSincronizar', [], function(r){ aviso(r.finalizados ? r.finalizados + ' aparelho(s) finalizado(s).' : 'Nenhum aparelho novo finalizado.'); carregar(); });
