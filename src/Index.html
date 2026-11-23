@@ -45,7 +45,8 @@
   .painel.on { display:block; }
   #pQuem { z-index:6; }
   .topo { display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--fundo); padding:12px 16px; border-bottom:1px solid var(--linha); z-index:2; }
-  .topo button { background:none; border:0; color:var(--texto); font:inherit; font-size:17px; padding:4px; }
+  .topo button { background:none; border:0; color:var(--texto); font:inherit; font-size:17px; min-height:44px; min-width:44px; padding:0 12px; }
+  .link-btn { background:none; border:0; color:var(--texto); font:inherit; text-decoration:underline; min-height:44px; padding:0 6px; cursor:pointer; }
   .topo .ok { font-weight:700; }
   #form.reparo .nr { display:none !important; }
   .grade { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
@@ -208,6 +209,7 @@ function desenhar(){
   $('lista').innerHTML = (lista.length ? lista.map(function(i){
     var t = [i.MARCA, i.MODELO].filter(Boolean).join(' ') || i['DESCRIÇÃO'] || i.TIPO || 'Aparelho';
     var l2 = [frase(i['SITUAÇÃO']), frase(String(i.DEFEITO || '').split('|')[0].trim()), frase(i['TÉCNICO'])].filter(Boolean).join(' · ');
+    var dp = diasParado(i); if (dp) l2 += ' · há ' + dp + (dp === 1 ? ' dia' : ' dias');
     if (i['COMBINA COM']) l2 += ' · ⇄ combina com ' + String(i['COMBINA COM']).split('\n').length;
     return '<button class="item" data-l="' + esc(i._aba + ':' + i._linha) + '"><b>' + esc(t) + '</b> <span style="color:var(--fraco)">' + esc(/^S\/N /.test(i.SERIAL||'') ? 'sem serial' : (i.SERIAL||'')) + '</span><div class="l2">' + esc(l2) + '</div></button>';
   }).join('') : '<div class="vazio">' + (q ? (S.procurando ? 'Procurando na planilha toda…' : 'Nada encontrado. Toque em "Novo aparelho" para cadastrar.') : 'Nenhum aparelho aqui.') + '</div>')
@@ -257,6 +259,14 @@ function mostrarMontagens(){
 }
 
 var ROTULOS = { 'NF':'Nota fiscal', 'EAN':'EAN', 'TÉCNICO':'Técnico', 'DESCRIÇÃO':'Descrição', 'SITUAÇÃO':'Situação' };
+function diasParado(i){
+  var sit = String(i['SITUAÇÃO'] || '').toUpperCase();
+  if (/REPARADO|FINALIZADO|SUCATA|VENDIDO|DEVOLVIDO/.test(sit)) return 0;
+  var m = String(i['ÚLTIMA ATUALIZAÇÃO'] || i['DATA ENTRADA'] || '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return 0;
+  var d = Math.floor((Date.now() - new Date(+m[3], +m[2] - 1, +m[1]).getTime()) / 86400000);
+  return d >= 1 && d < 3650 ? d : 0;
+}
 function rotulo(n){ n = String(n||''); return ROTULOS[n] || (n.charAt(0) + n.slice(1).toLowerCase()); }
 function frase(t){ t = String(t||''); return t === t.toUpperCase() ? t.charAt(0) + t.slice(1).toLowerCase() : t; }
 function campo(nome, tipo, valor){
@@ -268,15 +278,15 @@ function campo(nome, tipo, valor){
     if (tipo === 'lista'){
       var o = ['<option value="">Escolher…</option>'].concat(ops.map(function(x){ return '<option' + (x===valor?' selected':'') + '>' + esc(x) + '</option>'; }));
       if (valor && ops.indexOf(valor) < 0) o.push('<option selected>' + v + '</option>');
-      return '<label>' + esc(rotulo(nome)) + '</label><select id="' + id + '">' + o.join('') + '</select>';
+      return '<label for="' + id + '">' + esc(rotulo(nome)) + '</label><select id="' + id + '">' + o.join('') + '</select>';
     }
-    return '<label>' + esc(rotulo(nome)) + '</label><input id="' + id + '" list="' + id + '_l" value="' + v + '"><datalist id="' + id + '_l">' + ops.map(function(x){ return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
+    return '<label for="' + id + '">' + esc(rotulo(nome)) + '</label><input id="' + id + '" list="' + id + '_l" value="' + v + '"><datalist id="' + id + '_l">' + ops.map(function(x){ return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
   }
   if (tipo === 'data'){
     var iso = /^\d{2}\/\d{2}\/\d{4}$/.test(valor||'') ? valor.split('/').reverse().join('-') : '';
-    return '<label>' + esc(rotulo(nome)) + '</label><input id="' + id + '" type="date" value="' + iso + '">';
+    return '<label for="' + id + '">' + esc(rotulo(nome)) + '</label><input id="' + id + '" type="date" value="' + iso + '">';
   }
-  return '<label>' + esc(rotulo(nome)) + '</label><input id="' + id + '" value="' + v + '"' + (nome==='SERIAL'?' autocapitalize="characters" autocorrect="off"':'') + '>';
+  return '<label for="' + id + '">' + esc(rotulo(nome)) + '</label><input id="' + id + '" value="' + v + '"' + (nome==='SERIAL'?' autocapitalize="characters" autocorrect="off"':'') + '>';
 }
 
 function abrir(item){
@@ -309,9 +319,9 @@ function abrir(item){
   if (obs.length) h += '<div class="nr"><label>O que já foi feito (' + obs.length + ')</label>' + obs.map(function(o){
     return '<div class="obs"><div class="quem">' + esc(o.data) + ' · ' + esc(o.tecnico || '—') + '</div>' + esc(o.texto) + '</div>';
   }).join('') + '</div>';
-  h += '<label id="lNota">Nova observação</label><textarea id="f_nota" placeholder="O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok"></textarea>';
+  h += '<label id="lNota" for="f_nota">Nova observação</label><textarea id="f_nota" placeholder="O que você testou ou fez. Ex.: troquei a tela, testei 30 min, ok"></textarea>';
   // Aparelho que já existe: mostra com que nome a observação vai ficar (celular ou PC dividido entre técnicos).
-  h += '<div class="rodape" style="text-align:left">' + (item ? 'Fica como <b id="obsNome">' + esc(S.tecnico || 'sem nome') + '</b> (<a href="#" id="trocarObs">trocar</a>) e a data de hoje.' : 'Fica com o nome de quem está adicionando e a data de hoje.') + ' As observações antigas nunca são apagadas.</div>';
+  h += '<div class="rodape" style="text-align:left">' + (item ? 'Fica como <b id="obsNome">' + esc(S.tecnico || 'sem nome') + '</b> <button type="button" class="link-btn" id="trocarObs">Trocar</button> e a data de hoje.' : 'Fica com o nome de quem está adicionando e a data de hoje.') + ' As observações antigas nunca são apagadas.</div>';
   if (item) h += '<div class="rodape">Entrada ' + esc(it['DATA ENTRADA']||'—') + ' · atualizado ' + esc(it['ÚLTIMA ATUALIZAÇÃO']||'—') + '</div>';
   $('form').innerHTML = h;
   // Notebook com duas etiquetas: depois da 1ª foto o botão vira "Foto de outra etiqueta" e a 2ª só completa o que faltou.
@@ -335,7 +345,9 @@ function abrir(item){
     fd.parentNode.insertBefore(box, fd.nextSibling);
     if (!item) fd.placeholder = 'O defeito que apareceu. Toque abaixo ou dite pelo microfone';
   }
-  Array.prototype.forEach.call($('sits').children, function(b){ b.onclick = function(){ S.sit = b.getAttribute('data-s'); Array.prototype.forEach.call($('sits').children, function(x){ x.classList.toggle('on', x===b); }); aplicarModo(); }; });
+  Array.prototype.forEach.call($('sits').children, function(b){ b.onclick = function(){ var antes = S.sit; S.sit = b.getAttribute('data-s'); Array.prototype.forEach.call($('sits').children, function(x){ x.classList.toggle('on', x===b); }); aplicarModo();
+    // Aparelho já cadastrado: a situação nova é salva na hora (Reparado espera a observação, que vai para a produção).
+    if (S.atual && S.sit !== antes && S.sit !== 'REPARADO' && !$('f_nota').value.trim()) salvar(true); }; });
   if ($('quem')) Array.prototype.forEach.call($('quem').children, function(b){ b.onclick = function(){
     var f = $('f_' + 'TÉCNICO'.replace(/\W/g,'_')); if (f) f.value = b.textContent;
     Array.prototype.forEach.call($('quem').children, function(x){ x.classList.toggle('on', x===b); });
@@ -353,7 +365,7 @@ function abrir(item){
   $('pItem').scrollTop = 0;
 }
 
-function salvar(){
+function salvar(soSituacao){
   var item = S.atual ? { _linha: S.atual._linha, _aba: S.atual._aba, _serial: S.atual.SERIAL } : {};
   CAMPOS.forEach(function(c){
     var el = $('f_' + c[0].replace(/\W/g,'_')); if (!el) return;
@@ -379,6 +391,7 @@ function salvar(){
       if (r.existe){ aviso(r.erro + ' Abrindo ele.'); abrir(r.existe); return; }
       aviso(r.erro); return;
     }
+    if (soSituacao === true) { S.atual['SITUAÇÃO'] = S.sit; aviso('Situação salva: ' + frase(S.sit) + '.'); carregar(); return; }
     $('pItem').classList.remove('on');
     aviso(r.producao ? 'Salvo. Na planilha de produção vai: ' + r.producao : r.nada ? 'Nada mudou.' : 'Salvo.');
     $('busca').value = '';
